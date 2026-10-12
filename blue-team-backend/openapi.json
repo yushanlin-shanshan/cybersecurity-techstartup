@@ -648,6 +648,17 @@
       },
       "Batch": {
         "properties": {
+          "dataset_name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Dataset Name",
+            "default": ""
+          },
+          "allow_llm": {
+            "type": "boolean",
+            "title": "Allow Llm",
+            "default": false
+          },
           "scenario": {
             "anyOf": [
               {
@@ -729,6 +740,17 @@
               }
             ],
             "title": "Scenario"
+          },
+          "dataset_name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Dataset Name",
+            "default": ""
+          },
+          "allow_llm": {
+            "type": "boolean",
+            "title": "Allow Llm",
+            "default": false
           },
           "gap_minutes": {
             "type": "number",

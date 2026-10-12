@@ -31,6 +31,7 @@ def test_local_gateway_forwards_only_valid_review(monkeypatch):
     send = MagicMock(return_value=upstream)
     monkeypatch.setattr(server, 'urlopen', send)
     monkeypatch.setattr(server, 'CAN_REVIEW', True)
+    monkeypatch.setattr(server, 'CAN_UPLOAD', False)
     handler = request(value)
     handler.do_PATCH()
     assert handler.reply.call_args.args[0] == 200

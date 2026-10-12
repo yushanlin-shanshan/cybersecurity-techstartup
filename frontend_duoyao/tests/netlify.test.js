@@ -7,10 +7,10 @@ const request=(path,method='GET')=>new Request('https://sigsquared.netlify.app'+
 test('returns app configuration without exposing backend credentials',async()=>{
  const response=await createGateway(env)(request('/app-config.json'));
  assert.equal(response.status,200);
- assert.deepEqual(await response.json(),{job_id:'demo',can_review:false});
+ assert.deepEqual(await response.json(),{job_id:'demo',can_review:false,can_upload:false,max_upload_bytes:4194304});
 });
 test('rejects missing deployment settings with actionable errors',async()=>{
- for(const settings of [{},{...env,BACKEND_URL:'http://localhost:8000'},{...env,BACKEND_API_TOKEN:''}]) {
+ for(const settings of [{ENABLE_DATASET_UPLOADS:'true'},{...env,BACKEND_URL:'http://localhost:8000'},{...env,BACKEND_API_TOKEN:''}]) {
   assert.equal((await createGateway(settings)(request('/app-config.json'))).status,503);
  }
 });
@@ -53,4 +53,10 @@ test('allows validated review writes only when enabled and same-origin',async()=
  assert.equal(calls[0].options.method,'PATCH');
  assert.deepEqual(JSON.parse(calls[0].options.body),payload);
  assert.equal(calls[0].options.headers.Authorization,'Bearer test-only-token');
+});
+
+test('preserves read-only published preview until a live backend is configured',async()=>{
+ const response=await createGateway({})(request('/app-config.json'));
+ assert.equal(response.status,200);
+ assert.deepEqual(await response.json(),{job_id:'demo',results_url:'/api-static/results.json',can_upload:false,can_review:false});
 });

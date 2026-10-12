@@ -12,6 +12,7 @@
     <header><a class="wordmark" href="#" aria-label="sigsig home"><img class="brand-mark" src="logo.svg" alt="S squared" width="32" height="32">sigsig</a><span class="header-label">Security investigations</span><span class="local-tag"><i></i> Investigation workspace</span></header>
     <main>
       <div class="page-heading"><div><h1>Events</h1><p>See what happened. Decide what needs attention.</p></div></div>
+      <div class="dataset-toolbar"><label for="dataset-select">Dataset</label><select id="dataset-select" disabled aria-label="Dataset"><option>Loading datasets…</option></select><button id="open-upload" class="button primary" hidden>Upload dataset</button></div>
       <div class="source-bar"><div><span id="mode-tag" class="pill">Loading</span><strong id="dataset-name">Investigation data</strong><span id="dataset-description"></span></div></div>
       <div id="notice" role="status" aria-live="polite" hidden></div>
       <section class="metrics" aria-label="Dataset overview"><div class="metric"><span>Alerts</span><strong id="metric-alerts">—</strong><small>Across supplied groups</small></div><div class="metric"><span>Events</span><strong id="metric-groups">—</strong><small>Related alerts, together</small></div><div class="metric"><span>High priority</span><strong id="metric-high" class="coral">—</strong><small>Suggested review order</small></div><div class="metric"><span>Reviewed</span><strong id="metric-reviewed">—</strong><small>Resolved or dismissed in the backend</small></div></section>
@@ -22,6 +23,22 @@
       <footer><strong>sigsig</strong><span>Review priorities, then check the evidence.</span><a href="https://zenodo.org/records/8263181" target="_blank" rel="noopener noreferrer">AIT dataset reference ↗</a></footer>
     </main>
   </div>
+  <dialog id="upload-dialog" aria-labelledby="upload-heading">
+    <form id="upload-form">
+      <h2 id="upload-heading">Upload a dataset</h2>
+      <p>Creates a separate investigation. Existing datasets and review notes stay available.</p>
+      <fieldset id="upload-fields">
+        <label for="dataset-file">Log file</label><input id="dataset-file" type="file" accept=".json,.jsonl,.ndjson,.zip" required>
+        <p class="helper" id="upload-limit"></p><p class="helper">Wazuh, AMiner, or supported normalized logs. JSON files must contain one object per line, not a JSON array. ZIP files may contain multiple log files.</p>
+        <label for="dataset-title">Dataset name</label><input id="dataset-title" maxlength="80" placeholder="For example: October server logs">
+        <label for="log-year">Log year</label><input id="log-year" type="number" min="1970" max="2100" required><p class="helper">Used only for log timestamps that omit the year. Choose the year the activity occurred.</p>
+        <label class="ai-consent"><input id="upload-ai" type="checkbox"><span>Enable AI explanations for this dataset</span></label>
+        <p class="helper">When enabled on the server, selected event summaries and up to 12 evidence excerpts will be sent to OpenAI and may incur API charges. Leave unchecked to keep analysis local to the backend. This dataset is shared with everyone who can access this workspace.</p>
+        <div class="upload-actions"><button type="submit" class="button primary">Upload and analyze</button><button type="button" id="close-upload" class="button">Cancel</button></div>
+      </fieldset>
+      <p id="upload-state" role="status" aria-live="polite"></p><p id="upload-error" role="alert"></p>
+    </form>
+  </dialog>
   <script>
     // File previews cannot load ES modules or the same-origin backend API.
     if (location.protocol === 'file:') {

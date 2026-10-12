@@ -41,7 +41,7 @@ export type Explanation = {
   fallback_reason?: string;
 };
 export type Page<T> = { items: T[]; total: number; limit: number; offset: number };
-export type AnalysisOptions = { scenario?: string; gap_minutes?: number; max_span_minutes?: number; syslog_year?: number; limit?: number };
+export type AnalysisOptions = { dataset_name?: string; allow_llm?: boolean; scenario?: string; gap_minutes?: number; max_span_minutes?: number; syslog_year?: number; limit?: number };
 export type RelatedIncident = { id: string; title: string; priority: number; similarity: number; reason: string; shared_entities: string[]; same_anchor: boolean; gap_minutes: number };
 
 export class BlueTeamAPI {

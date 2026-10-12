@@ -28,7 +28,7 @@ python3 serve.py
 
 Open http://127.0.0.1:5173. Events load automatically, including after a refresh.
 
-`serve.py` serves static assets and forwards investigation reads and validated review updates to the backend. The browser uses its own origin, so this workflow requires no browser CORS configuration.
+`serve.py` serves static assets and forwards dataset uploads, investigation reads, and validated review updates to the backend. The browser uses its own origin, so this workflow requires no browser CORS configuration.
 
 Optional operator configuration:
 
@@ -36,7 +36,7 @@ Optional operator configuration:
 BACKEND_URL=http://127.0.0.1:8000 SIGNALDESK_JOB_ID=demo PORT=5174 python3 serve.py
 ```
 
-These settings are for developers. There is no URL field, results upload, or demo-reset action in the website. Do not use `python -m http.server` for this version; it cannot serve the API gateway or application configuration.
+These settings are for developers. The Upload dataset button accepts raw log files; there is no backend URL field or demo-reset action. Do not use `python -m http.server` for this version; it cannot serve the API gateway or application configuration.
 
 ## Data flow
 
@@ -50,9 +50,9 @@ Use the matching updated backend, which returns `benign_explanations` and `benig
 
 ## Current boundaries
 
-- Investigation reads and analyst-feedback PATCH updates; no raw-file uploads or Q&A calls.
+- Multipart dataset uploads, job catalog and progress reads, incident reads, and analyst-feedback PATCH updates; no Q&A UI.
 - Review filters and counts use actual backend statuses. Update status saves the workflow status, separate assessment, and note to the existing feedback endpoint. Editing can be disabled with `ENABLE_REVIEW_WRITES=false`.
-- When the backend has `LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`, event details automatically include an LLM explanation. Successful results are cached server-side for 10 minutes. API credentials never enter the frontend.
+- When the backend has `LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`, event details include an LLM explanation only when the uploaded job has `allow_llm=true` (existing imported demo jobs retain their prior behavior). Successful results are cached server-side for 10 minutes. API credentials never enter the frontend.
 - Possible normal explanations display AI hypotheses, verification steps, and links to related evidence. If generation fails or is disabled, the page clearly labels AI analysis as unavailable; no alternatives are invented.
 - Representative evidence is labeled with its displayed count and total incident count.
 - Citation membership is checked, but factual correctness and attack detection accuracy still require evaluation.
@@ -65,3 +65,9 @@ Use the matching updated backend, which returns `benign_explanations` and `benig
 - **Missing job:** Run `python -m backend.cli demo` or configure an existing ready job with `SIGNALDESK_JOB_ID`.
 - **Port in use:** Stop the older static preview, or choose a different `PORT`.
 - **Individual event fails:** Use its **Retry** action after restoring the service.
+
+## Upload integration
+
+`GET /app-config.json` returns `job_id`, `can_review`, `can_upload`, and `max_upload_bytes`. The browser lists `GET /api/v1/jobs`, posts multipart `file`, `dataset_name`, `syslog_year`, and `allow_llm` to `/api/v1/jobs`, and polls the returned job ID until ready or failed. A ready job uses the existing incident and evidence endpoints. Every upload creates a separate job; no existing evidence or review is overwritten.
+
+Update the backend as well as the frontend: older backends do not honor per-dataset AI consent. The bundled OpenAPI schema and TypeScript client include the new fields.

@@ -237,3 +237,9 @@ The live API was checked with the complete scenario's **45,544 raw records**, pr
 - `.env.example`, `Dockerfile`, `openapi.json`: configuration, deployment and API contract.
 
 Dataset attribution: Max Landauer, Florian Skopik and Markus Wurzenberger, *AIT Alert Data Set*, Zenodo, DOI [10.5281/zenodo.8263181](https://doi.org/10.5281/zenodo.8263181). See the [authors' repository](https://github.com/ait-aecid/alert-data-set) for the dataset's original analysis methodology.
+
+## Dataset upload in sigsig
+
+The frontend can send multipart files to `POST /api/v1/jobs` and poll the returned job ID. `dataset_name` is an optional display name (80 characters maximum); `allow_llm` defaults to false and requires explicit consent for that dataset. Local analysis works without AI consent. Both automatic explanations and `/ask` honor this choice. Existing CLI-imported demo data retains its previously enabled AI behavior.
+
+Each upload creates independent stored evidence and review state. Uploads accept newline-delimited JSON (.json/.jsonl/.ndjson) or ZIP archives containing those files. Arbitrary JSON arrays, CSV, and unrelated schemas require conversion. The local app accepts up to 150 MB by default; its Netlify gateway caps files at 4 MB. Dataset names are labels, while `scenario` remains an ingestion filter.

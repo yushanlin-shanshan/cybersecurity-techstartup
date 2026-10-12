@@ -2,6 +2,7 @@ import {validateResults} from './schema.js';
 import {BlueTeamBackend} from './backend.js';
 import {formatSummary} from './summary.js';
 import {reviewStatuses,reviewAssessments} from './review.js';
+import {listJobs,uploadDataset,jobLabel,phases} from './datasets.js';
 
 const $=s=>document.querySelector(s);
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,6 +11,7 @@ const time=v=>new Date(v).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-d
 let data={schema_version:1,mode:'results',dataset:{name:'Investigation data'},incidents:[]},selected=null,activeTab='timeline';
 let backend=null, queuePage=0, canReview=false;
 const reviewDrafts=new WeakMap();
+let appConfig=null,loadVersion=0,uploadBusy=false;
 const pageSize=50, pendingDetails=new WeakSet(), detailErrors=new WeakMap();
 
 function notify(message,error=false){const n=$('#notice');n.textContent=message;n.hidden=false;n.className=error?'error':'';}
@@ -111,7 +113,10 @@ async function ensureDetail(c){
 function loadResults(value,client=null){const checked=validateResults(value);data=checked;backend=client;queuePage=0;selected=null;activeTab='timeline';$('#search').value='';$('#priority-filter').value='all';$('#status-filter').value='all';render();}
 function filtersChanged(){queuePage=0;render();}
 $('#search').addEventListener('input',filtersChanged);$('#priority-filter').onchange=filtersChanged;$('#status-filter').onchange=filtersChanged;
-async function start(){
+async function start(requestedJob=null){
+ const version=++loadVersion;
+ const current=()=>version===loadVersion;
+ backend=null;data={schema_version:1,mode:'results',dataset:{name:'Investigation data'},incidents:[]};
  $('#notice').hidden=true;
  $('#mode-tag').textContent='Loading';$('#mode-tag').className='pill';
  $('#dataset-name').textContent='Investigation data';$('#dataset-description').textContent='';
@@ -121,36 +126,77 @@ async function start(){
  $('#queue-list').innerHTML='<div class="empty" role="status"><strong>Loading events…</strong>Preparing your investigation queue.</div>';
  $('#detail').innerHTML='<div class="empty"><strong>Your evidence workspace</strong>Select an event once the investigation data is ready.</div>';
  try{
-  const response=await fetch('/app-config.json',{cache:'no-store',signal:AbortSignal.timeout(10000)});
-  if(!response.ok){
-   const failure=await response.json().catch(()=>null);
-   throw Error(failure?.detail||(response.status===404?'Deployment setup is incomplete: the application configuration endpoint is missing.':'Application configuration unavailable.'));
+  if(!appConfig){
+   const response=await fetch('/app-config.json',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+   if(!response.ok){const failure=await response.json().catch(()=>null);throw Error(failure?.detail||'Deployment setup is incomplete: application configuration is unavailable.');}
+   appConfig=await response.json();
+   if(typeof appConfig.job_id!=='string'||!appConfig.job_id.trim())throw Error('No default dataset configured.');
   }
-  const config=await response.json();
-  if(typeof config.job_id!=='string'||!config.job_id.trim())throw Error('No dataset configured.');
-<<<<<<< HEAD
-  canReview=config.can_review===true;
-=======
-  if(typeof config.results_url==='string'&&config.results_url.startsWith('/')&&!config.results_url.startsWith('//')){
-   const snapshot=await fetch(config.results_url,{cache:'no-store',signal:AbortSignal.timeout(60000)});
-   if(!snapshot.ok)throw Error('Published event snapshot unavailable.');
-   loadResults(await snapshot.json(),null);
+  if(!current())return;
+  canReview=appConfig.can_review===true;
+  $('#open-upload').hidden=!appConfig.can_upload;
+  $('#upload-limit').textContent=`Maximum file size: ${Math.floor((appConfig.max_upload_bytes||4194304)/1024/1024)} MB.`;
+  // Preserve the team's published read-only snapshot when no live API is configured.
+  if(typeof appConfig.results_url==='string'&&appConfig.results_url.startsWith('/')&&!appConfig.results_url.startsWith('//')){
+   canReview=false;$('#open-upload').hidden=true;
+   const response=await fetch(appConfig.results_url,{cache:'no-store',signal:AbortSignal.timeout(60000)});
+   if(!response.ok)throw Error('Published event snapshot unavailable.');
+   const snapshot=await response.json();if(!current())return;
+   loadResults(snapshot);
+   $('#dataset-select').innerHTML=`<option>${escapeHTML(snapshot.dataset.name)} · published snapshot</option>`;$('#dataset-select').disabled=true;
    for(const el of [$('#search'),$('#priority-filter'),$('#status-filter')])el.disabled=false;
    return;
   }
->>>>>>> bf49a98c31c85f47b888e4e41aa57946e77b42b9
-  const client=new BlueTeamBackend(location.origin,config.job_id);
-  const results=await client.results((loaded,total)=>{$('#dataset-description').textContent=`Loading ${loaded.toLocaleString()} of ${total.toLocaleString()} events…`;});
+  const jobs=await listJobs();if(!current())return;
+  let remembered;try{remembered=localStorage.getItem('sigsig-active-job');}catch{}
+  const chosen=requestedJob||remembered||appConfig.job_id;
+  let job=jobs.find(j=>j.id===chosen)||jobs.find(j=>j.id===appConfig.job_id)||jobs.find(j=>j.status==='ready')||jobs[0];
+  $('#dataset-select').innerHTML=jobs.length?jobs.map(j=>`<option value="${escapeHTML(j.id)}" ${j.id===job.id?'selected':''}>${escapeHTML(jobLabel(j))} · ${escapeHTML(j.status)}</option>`).join(''):'<option>No datasets yet</option>';
+  $('#dataset-select').disabled=!jobs.length;
+  if(!job){$('#mode-tag').textContent='No data';$('#queue-list').innerHTML='<div class="empty"><strong>No datasets yet</strong>Upload a log file to begin an investigation.</div>';return;}
+  try{localStorage.setItem('sigsig-active-job',job.id);}catch{}
+  $('#dataset-name').textContent=jobLabel(job);
+  const client=new BlueTeamBackend(location.origin,job.id);
+  while(job.status==='queued'||job.status==='running'){
+   const phase=phases[job.phase]||'Processing dataset';
+   const count=job.summary?.counts?.accepted;
+   $('#mode-tag').textContent='Analyzing';
+   $('#queue-list').innerHTML=`<div class="empty" role="status"><strong>${escapeHTML(phase)}</strong><progress aria-label="Dataset analysis in progress"></progress><p>${count===undefined?'Analysis continues on the server. You may switch datasets or return later.':`${Number(count).toLocaleString()} records accepted so far.`}</p></div>`;
+   await new Promise(resolve=>setTimeout(resolve,1500));if(!current())return;
+   job=await client.get(client.path);if(!current())return;
+  }
+  if(job.status!=='ready')throw Error(`Dataset analysis failed: ${job.error||'Check the file format and log year, then upload a corrected file.'}`);
+  const results=await client.results((loaded,total)=>{if(current())$('#dataset-description').textContent=`Loading ${loaded.toLocaleString()} of ${total.toLocaleString()} events…`;});
+  if(!current())return;
+  if(job.parameters?.dataset_name)results.dataset.name=job.parameters.dataset_name;
   loadResults(results,client);
+  $('#dataset-select').selectedOptions[0].textContent=`${jobLabel(job)} · ready`;
+  const rejected=job.summary?.counts?.rejected||0;
+  if(rejected)notify(`${rejected.toLocaleString()} records were rejected. The displayed events use accepted records only.`,true);
   for(const el of [$('#search'),$('#priority-filter'),$('#status-filter')])el.disabled=false;
  }catch(err){
+  if(!current())return;
   console.error('Unable to load investigation data:',err.message);
   $('#mode-tag').textContent='Unavailable';$('#dataset-description').textContent='';
   notify(err.message,true);
   $('#queue-list').innerHTML='<div class="empty"><strong>Events are temporarily unavailable</strong>Please try again in a moment.<p><button id="retry-load" class="button primary">Try again</button></p></div>';
   $('#detail').innerHTML='<div class="empty"><strong>No event data loaded</strong>Your events will appear here when the service is available.</div>';
-  $('#retry-load').onclick=start;
+  $('#retry-load').onclick=()=>start($('#dataset-select').value||null);
  }
 }
+$('#dataset-select').onchange=e=>start(e.target.value);
+$('#open-upload').onclick=()=>{if(uploadBusy)return;$('#upload-form').reset();$('#log-year').value=new Date().getFullYear();$('#upload-error').textContent='';$('#upload-state').textContent='';$('#upload-dialog').showModal();};
+$('#close-upload').onclick=()=>$('#upload-dialog').close();
+$('#upload-dialog').addEventListener('cancel',e=>{if(uploadBusy)e.preventDefault();});
+$('#dataset-file').onchange=e=>{if(!$('#dataset-title').value)$('#dataset-title').value=(e.target.files[0]?.name||'').slice(0,80);};
+$('#upload-form').onsubmit=async e=>{
+ e.preventDefault();if(uploadBusy)return;
+ uploadBusy=true;$('#upload-fields').disabled=true;$('#upload-error').textContent='';$('#upload-state').textContent='Uploading file… Please keep this page open.';
+ try{
+  const job=await uploadDataset($('#dataset-file').files[0],{name:$('#dataset-title').value,year:Number($('#log-year').value),allowLLM:$('#upload-ai').checked,maxBytes:appConfig.max_upload_bytes||4194304});
+  $('#upload-dialog').close();start(job.id);
+ }catch(error){$('#upload-error').textContent=error.message;}
+ finally{uploadBusy=false;$('#upload-fields').disabled=false;$('#upload-state').textContent='';}
+};
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();$('#search').focus();}});
 start();

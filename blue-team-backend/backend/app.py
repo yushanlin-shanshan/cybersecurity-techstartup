@@ -21,6 +21,8 @@ from .explain import explain, selected_records
 from .ml import RelatedIndex
 
 class Options(BaseModel):
+    dataset_name: str = Field(default="", max_length=80)
+    allow_llm: bool = False
     scenario: str | None = Field(default=None, max_length=100, pattern=r'^[\w-]+$')
     gap_minutes: float = Field(default=15, gt=0, le=1440)
     max_span_minutes: float = Field(default=60, gt=0, le=1440)
@@ -83,8 +85,12 @@ def create_app(settings=None):
     explanation_cache = OrderedDict()
     explanation_lock = __import__('threading').Lock()
 
-    def detail_explanation(g, records):
-        if not settings.llm_enabled:
+    def job_allows_llm(job_id):
+        parameters = store.job(job_id)['parameters']
+        return parameters.get('allow_llm', parameters.get('imported_results', False))
+
+    def detail_explanation(job_id, g, records):
+        if not settings.llm_enabled or not job_allows_llm(job_id):
             return explain(settings, g, records, 'Explain this incident')
         # Hash all inputs so changed evidence or review data invalidates the result.
         key = hashlib.sha256(json.dumps([settings.openai_model, g, records], sort_keys=True).encode()).hexdigest()
@@ -162,6 +168,8 @@ def create_app(settings=None):
     @app.post('/api/v1/jobs', status_code=202)
     async def upload(request: Request, file: Annotated[UploadFile, File()],
                      scenario: Annotated[str | None, Form()] = None,
+                     dataset_name: Annotated[str, Form(max_length=80)] = '',
+                     allow_llm: Annotated[bool, Form()] = False,
                      gap_minutes: Annotated[float, Form(gt=0, le=1440)] = 15,
                      max_span_minutes: Annotated[float, Form(gt=0, le=1440)] = 60,
                      syslog_year: Annotated[int, Form(ge=1970, le=2100)] = 2022,
@@ -169,7 +177,7 @@ def create_app(settings=None):
         queue_check()
         filename = safe_filename(file.filename)
         try:
-            options = Options(scenario=scenario or None, gap_minutes=gap_minutes, max_span_minutes=max_span_minutes, syslog_year=syslog_year, limit=limit)
+            options = Options(dataset_name=dataset_name.strip() or filename[:80], allow_llm=allow_llm, scenario=scenario or None, gap_minutes=gap_minutes, max_span_minutes=max_span_minutes, syslog_year=syslog_year, limit=limit)
         except ValueError as e:
             await file.close()
             raise HTTPException(422, 'Invalid analysis options') from e
@@ -238,7 +246,7 @@ def create_app(settings=None):
     def detail(job_id: str, incident_id: str):
         g = incident(job_id, incident_id)
         records = selected_records(store, job_id, g)
-        return dict(incident=g, representative_evidence=records, explanation=detail_explanation(g, records))
+        return dict(incident=g, representative_evidence=records, explanation=detail_explanation(job_id, g, records))
 
     @app.get('/api/v1/jobs/{job_id}/incidents/{incident_id}/evidence')
     def evidence(job_id: str, incident_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
@@ -260,6 +268,10 @@ def create_app(settings=None):
     @app.post('/api/v1/jobs/{job_id}/incidents/{incident_id}/ask')
     def ask(job_id: str, incident_id: str, payload: Ask):
         g = incident(job_id, incident_id)
+        if payload.use_llm and not job_allows_llm(job_id):
+            result = explain(settings, g, selected_records(store, job_id, g), payload.question)
+            result['fallback_reason'] = 'AI explanations were not enabled for this dataset.'
+            return result
         return explain(settings, g, selected_records(store, job_id, g), payload.question, payload.use_llm)
 
     @app.patch('/api/v1/jobs/{job_id}/incidents/{incident_id}/feedback')

@@ -205,7 +205,7 @@ def test_detail_generates_llm_analysis_and_caches_only_success(tmp_path, monkeyp
         return result
     monkeypatch.setattr(importlib.import_module('backend.app'), 'explain', fake_explain)
     with TestClient(create_app(Settings(data_dir=tmp_path/'llm', llm_enabled=True, openai_api_key='fake'))) as client:
-        job = wait_job(client, client.post('/api/v1/jobs/batch', json={'records':[record()]}).json()['id'])
+        job = wait_job(client, client.post('/api/v1/jobs/batch', json={'records':[record()], 'allow_llm':True}).json()['id'])
         ident = client.get(f"/api/v1/jobs/{job['id']}/incidents").json()['items'][0]['id']
         url = f"/api/v1/jobs/{job['id']}/incidents/{ident}"
         first = client.get(url).json()
@@ -218,3 +218,39 @@ def test_detail_generates_llm_analysis_and_caches_only_success(tmp_path, monkeyp
         fallback[0] = False
         assert client.get(url).json()['explanation']['mode']=='llm'
         assert calls == [True, True, True]
+
+
+def test_uploaded_datasets_are_isolated_and_ai_requires_per_job_consent(tmp_path, monkeypatch):
+    import importlib
+    calls = []
+    def tracked_explain(settings, g, records, question, use_llm=False):
+        calls.append(use_llm)
+        return explain(settings, g, records, question, False)
+    monkeypatch.setattr(importlib.import_module('backend.app'), 'explain', tracked_explain)
+    settings = Settings(data_dir=tmp_path, llm_enabled=True, openai_api_key='fake')
+    with TestClient(create_app(settings)) as client:
+        jobs = []
+        for name, consent in [('Original', False), ('Company', True)]:
+            response = client.post('/api/v1/jobs', files={'file': ('logs.jsonl', json.dumps(record())+'\n')},
+                                   data={'dataset_name':name, 'allow_llm':str(consent).lower(), 'syslog_year':2026})
+            assert response.status_code == 202
+            job = wait_job(client, response.json()['id'])
+            assert job['status'] == 'ready'
+            assert job['parameters']['dataset_name'] == name
+            assert job['parameters']['allow_llm'] == consent
+            jobs.append(job)
+        assert jobs[0]['id'] != jobs[1]['id']
+        paths = []
+        for job in jobs:
+            queue = f"/api/v1/jobs/{job['id']}/incidents"
+            incident = client.get(queue).json()['items'][0]
+            paths.append(queue+'/'+incident['id'])
+        client.get(paths[0]);client.post(paths[0]+'/ask', json={'question':'Explain', 'use_llm':True})
+        assert calls == [False, False]
+        client.get(paths[1]);assert calls[-1] is True
+        client.patch(paths[1]+'/feedback', json={'status':'resolved','disposition':'benign','note':'New dataset only'})
+        assert client.get(paths[0]).json()['incident']['review']['status'] == 'new'
+        assert len(client.get('/api/v1/jobs').json()['items']) == 2
+    with TestClient(create_app(settings)) as client:
+        assert client.get(paths[1]).json()['incident']['review']['note'] == 'New dataset only'
+        assert client.get(f"/api/v1/jobs/{jobs[0]['id']}").json()['parameters']['allow_llm'] is False
