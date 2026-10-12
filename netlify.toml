@@ -1,0 +1,5 @@
+# Netlify publishes the repository root by default. The site is the
+# static SignalDesk app already built in frontend_duoyao/dist.
+# The Python API in blue-team-backend is not part of this publish.
+[build]
+  publish = "frontend_duoyao/dist"
