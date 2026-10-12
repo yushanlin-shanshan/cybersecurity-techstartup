@@ -20,13 +20,14 @@ export class BlueTeamBackend {
       const page=await this.get(`${this.path}/incidents?limit=200&offset=${groups.length}&include_dismissed=true`);
       if(!Array.isArray(page.items)||!Number.isSafeInteger(page.total)||page.total<0)throw Error('Unexpected incident page format.');
       if(page.total>10000)throw Error('This job exceeds the 10,000-event browser limit. Use a smaller scenario.');
-      if(total!==null&&total!==page.total)throw Error('The queue changed during loading. Please reconnect.');
+      if(total!==null&&total!==page.total)throw Error('The queue changed during loading. Please try again.');
       total=page.total;
       if(!page.items.length&&groups.length<total)throw Error('Backend returned an incomplete incident page.');
       groups.push(...page.items);progress(groups.length,total);
     }while(groups.length<total);
     if(groups.length!==total)throw Error('Incident total does not match the returned records.');
-    return {schema_version:1,mode:'results',dataset:{name:`Blue Team · ${this.job}`,description:`${total.toLocaleString()} events · real backend results${job.summary?.partial_input?' · PARTIAL INPUT':''} · local explanations`},incidents:groups.map(adaptIncident)};
+    const scenarios=[...new Set(groups.map(g=>g.scenario).filter(Boolean))];
+    return {schema_version:1,mode:'results',dataset:{name:scenarios.join(' · ')||'Investigation dataset',description:`${total.toLocaleString()} events${job.summary?.partial_input?' · Partial dataset':''}`},incidents:groups.map(adaptIncident)};
   }
   async detail(id){const payload=await this.get(`${this.path}/incidents/${encodeURIComponent(id)}`);if(payload.incident?.id!==id)throw Error('Backend returned a mismatched incident ID.');return adaptDetail(payload,this);}
   evidenceURL(id){return this.base+this.path+`/incidents/${encodeURIComponent(id)}/evidence?limit=200&offset=0`;}

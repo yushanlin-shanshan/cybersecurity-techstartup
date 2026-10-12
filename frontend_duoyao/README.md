@@ -1,60 +1,46 @@
-# SignalDesk Frontend
+# SignalDesk
 
-A local security alert investigation interface built with HTML, CSS, and vanilla JavaScript. No dependency installation is required. All interface text and project documentation are in English.
+An English-language investigation interface driven by the Blue Team backend. Opening the page automatically loads the configured dataset. Users do not enter service URLs, import result files, or switch to fictional demo data.
 
-## Start locally
+## Run locally
 
-In VS Code, open the frontend folder (`frontend_duoyao` in the team repository, or `frontend` in the standalone package). Run this command from that folder:
-
-```sh
-python3 -m http.server 5173 --bind 127.0.0.1 --directory dist
-```
-
-Open http://localhost:5173 in your browser. On Windows, use `python` if `python3` is unavailable.
-
-If port 5173 is already in use, replace it with 5174 and open http://localhost:5174.
-
-Alternatively, from the root of the team repository:
+Start the backend using its README, including `python -m backend.cli demo` to prepare the bundled real AIT scenario. Then run this from the frontend folder:
 
 ```sh
-python3 -m http.server 5174 --bind 127.0.0.1 --directory frontend_duoyao/dist
+python3 serve.py
 ```
 
-Do not open the HTML file by double-clicking it; JavaScript modules require an HTTP server.
-No `npm install`, API key, external CDN, or external font is needed.
+Open http://127.0.0.1:5173. On Windows, use `python` if needed.
 
-## Features
+Use `serve.py`, not a plain static HTTP server: it serves both the interface and the same-origin API gateway. No frontend dependency installation is needed. See `CONNECT_BACKEND.md` for the complete developer setup.
 
-- Five clearly labeled fictional demo cases, not findings from the AIT dataset.
-- Search, priority filtering, review-status filtering, and sorting by priority and score.
-- Event timelines, assessments, and expandable original evidence.
-- In-session review tracking and single-case JSON export.
-- JSON file import or read-only loading from a backend endpoint.
-- Data validation, error messages, empty states, and responsive layouts.
+## Behavior
 
-Refreshing the page restores the demo and resets review progress. There is no database or account system.
-The frontend does not run detection or call a language model. The backend supplies analysis results.
+- Automatically loads real event summaries on opening or refreshing the page.
+- Displays counts calculated from loaded backend incident groups.
+- Uses the backend's actual `new`, `investigating`, `resolved`, and `dismissed` review statuses. The Reviewed metric counts resolved and dismissed events.
+- Provides search, priority/status filters, and pagination across the loaded queue.
+- Loads representative original evidence and explanations when an event is selected.
+- Preserves original records, source files, line references, and citations.
+- Exports a selected event as JSON.
+- Shows a retry state if data cannot be loaded. Never substitutes fictional records or zero counts for a failed request.
 
-## Backend collaboration
+This interface is read-only. It does not change backend review status, upload raw datasets, or invoke paid language models. The timeline displays representative evidence rather than every member record.
 
-Share `BACKEND_CONTRACT.md` and `examples/demo-results.json` with the backend developer.
-Start by having the backend produce a JSON file in the agreed format, then use **Import results**.
-For the existing Blue Team backend, use **Connect backend → Blue Team API** with base URL `http://127.0.0.1:8000` and job ID `demo`. See `CONNECT_BACKEND.md` for startup and integration instructions. The adapter uses the existing API without requiring the backend to adopt the file-import format.
+## Files
 
-**Do not import raw Wazuh or AMiner JSON Lines files directly.** The frontend accepts investigation groups prepared by the backend.
-Use `mode: "results"` for actual pipeline results and `mode: "demo"` for simulated examples.
-
-## Project files
-
-- `dist/index.html`: Page structure.
-- `dist/styles.css`: Visual design and responsive styles.
-- `dist/app.js`: Interactions, imports, and backend connection.
-- `dist/data.js`: Separate fictional demo fixtures.
-- `dist/schema.js`: Validation of imported and backend data.
-- `dist/backend.js`: Read-only adapter for the Blue Team API.
-- `CONNECT_BACKEND.md`: Startup, field mapping, and integration limits.
+- `serve.py`: Local web server and read-only same-origin API gateway.
+- `dist/index.html`, `dist/styles.css`: Interface structure and styling.
+- `dist/app.js`: Automatic loading, filtering, pagination, and evidence display.
+- `dist/backend.js`: Adapter for the Blue Team API.
+- `dist/schema.js`: Internal result validation.
+- `CONNECT_BACKEND.md`: Developer service setup and integration limits.
+- `BACKEND_CONTRACT.md`: Internal data mapping and export format.
 - `tests/backend.test.js`: Adapter regression tests.
-- `examples/demo-results.json`: Complete example of the expected results format.
-- `BACKEND_CONTRACT.md`: Backend integration specification.
+- `examples/demo-results.json`: Historical developer fixture only; not loaded or accessible through an import control in the application.
 
-This is a local development frontend and has not been published publicly. Teammates can copy the entire frontend folder to run it locally.
+## Tests
+
+```sh
+node --test tests/backend.test.js
+```
