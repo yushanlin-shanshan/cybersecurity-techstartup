@@ -28,7 +28,7 @@ python3 serve.py
 
 Open http://127.0.0.1:5173. Events load automatically, including after a refresh.
 
-`serve.py` serves static assets and forwards read-only `/api/v1/` requests to the backend. The browser uses its own origin, so this workflow requires no browser CORS configuration.
+`serve.py` serves static assets and forwards investigation reads and validated review updates to the backend. The browser uses its own origin, so this workflow requires no browser CORS configuration.
 
 Optional operator configuration:
 
@@ -50,8 +50,8 @@ Use the matching updated backend, which returns `benign_explanations` and `benig
 
 ## Current boundaries
 
-- Read-only API access; no raw-file uploads, Q&A calls, or analyst-feedback writes.
-- Review filters and counts use actual backend statuses.
+- Investigation reads and analyst-feedback PATCH updates; no raw-file uploads or Q&A calls.
+- Review filters and counts use actual backend statuses. Update status saves the workflow status, separate assessment, and note to the existing feedback endpoint. Editing can be disabled with `ENABLE_REVIEW_WRITES=false`.
 - When the backend has `LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`, event details automatically include an LLM explanation. Successful results are cached server-side for 10 minutes. API credentials never enter the frontend.
 - Possible normal explanations display AI hypotheses, verification steps, and links to related evidence. If generation fails or is disabled, the page clearly labels AI analysis as unavailable; no alternatives are invented.
 - Representative evidence is labeled with its displayed count and total incident count.

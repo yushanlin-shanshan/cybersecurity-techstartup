@@ -1,4 +1,5 @@
-// Read-only adapter for blue-team-backend's /api/v1 API.
+import {validateReview} from './review.js';
+// Adapter for blue-team-backend's investigation and review APIs.
 export class BlueTeamBackend {
   constructor(base, job='demo', fetcher=(...args)=>fetch(...args)) {
     const url=new URL(base);
@@ -8,7 +9,7 @@ export class BlueTeamBackend {
     this.path=`/api/v1/jobs/${encodeURIComponent(this.job)}`;
   }
   async get(path){
-    const response=await this.fetcher(this.base+path,{credentials:'omit',signal:AbortSignal.timeout(60000)});
+    const response=await this.fetcher(this.base+path,{credentials:'same-origin',signal:AbortSignal.timeout(60000)});
     if(!response.ok)throw Error(`Backend HTTP ${response.status}${response.status===401?': authentication required; this connector supports a local backend without an API token.':''}`);
     return response.json();
   }
@@ -30,11 +31,25 @@ export class BlueTeamBackend {
     return {schema_version:1,mode:'results',dataset:{name:scenarios.join(' · ')||'Investigation dataset',description:`${total.toLocaleString()} events${job.summary?.partial_input?' · Partial dataset':''}`},incidents:groups.map(adaptIncident)};
   }
   async detail(id){const payload=await this.get(`${this.path}/incidents/${encodeURIComponent(id)}`);if(payload.incident?.id!==id)throw Error('Backend returned a mismatched incident ID.');return adaptDetail(payload,this);}
+  async updateReview(id,value){
+    const body=validateReview(value);
+    const response=await this.fetcher(this.base+`${this.path}/incidents/${encodeURIComponent(id)}/feedback`,{
+      method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body),signal:AbortSignal.timeout(20000),
+    });
+    if(!response.ok){
+      const failure=await response.json().catch(()=>null);
+      throw Error(typeof failure?.detail==='string'?failure.detail:`Could not save review (HTTP ${response.status}). Please try again.`);
+    }
+    const result=await response.json();
+    if(result.id!==id)throw Error('The saved review response did not match this event. Refresh to check its status.');
+    return validateReview(result.review);
+  }
   evidenceURL(id){return this.base+this.path+`/incidents/${encodeURIComponent(id)}/evidence?limit=200&offset=0`;}
 }
 
 export function adaptIncident(g){
-  return {id:g.id,title:g.title,priority:g.priority_band,score:g.priority,entity:g.anchor?.slice(1).join(' / ')||g.hosts?.join(', ')||'Unknown',start:g.start,end:g.end,alert_count:g.count,sources:g.sensors,summary:'Select this event to load its explanation and representative original evidence.',reasons:[],benign_explanations:[],missing_context:[],next_steps:[],evidence:[],backend:{loaded:false,review_status:g.review?.status||'new',rule_score:g.score,priority_components:g.priority_components,score_components:g.score_components,ml:g.ml}};
+  return {id:g.id,title:g.title,priority:g.priority_band,score:g.priority,entity:g.anchor?.slice(1).join(' / ')||g.hosts?.join(', ')||'Unknown',start:g.start,end:g.end,alert_count:g.count,sources:g.sensors,summary:'Select this event to load its explanation and representative original evidence.',reasons:[],benign_explanations:[],missing_context:[],next_steps:[],evidence:[],backend:{loaded:false,review_status:g.review?.status||'new',review_disposition:g.review?.disposition||'unreviewed',review_note:g.review?.note||'',rule_score:g.score,priority_components:g.priority_components,score_components:g.score_components,ml:g.ml}};
 }
 export function adaptDetail(payload,client){
   const c=adaptIncident(payload.incident),ex=payload.explanation;

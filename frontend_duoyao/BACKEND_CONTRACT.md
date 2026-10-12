@@ -50,7 +50,7 @@ All displayed times use UTC. Preserve event timestamps rather than substituting 
 - Do not use `labels.csv` or known attack time windows as inputs to inference scores. Keep evaluation separate from inference.
 - The backend is responsible for preserving and interpreting AMiner's `TrainingMode` flag, missing fields, and source-field semantics.
 - Severity values from different detectors must not be treated as a shared numerical scale without an explicit mapping.
-- Review status is read from backend records. This UI does not write feedback. Single-case exports include `review_status`.
+- Review status is read from backend records. The status editor writes `status`, `disposition`, and `note` to the backend feedback endpoint when enabled. Single-case exports include `review_status`.
 
 
 ## LLM alternative-cause mapping

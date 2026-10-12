@@ -49,3 +49,29 @@ test('maps LLM benign hypotheses and checks their evidence references',()=>{
  payload.explanation.mode='local';
  assert.equal(adaptDetail(payload,client).backend.benign_hypotheses.length,0);
 });
+
+
+test('persists review updates and preserves their separate assessment and note',async()=>{
+ const review={status:'resolved',disposition:'confirmed',note:'Checked evidence; containment completed.'};
+ let request;
+ const client=new BlueTeamBackend('http://localhost:5173','demo',async(url,options)=>{request={url,options};return response({...incident,review});});
+ assert.deepEqual(await client.updateReview(incident.id,review),review);
+ assert.equal(request.options.method,'PATCH');
+ assert.match(request.url,/event-1\/feedback$/);
+ assert.deepEqual(JSON.parse(request.options.body),review);
+ const {adaptIncident}=await import('../dist/backend.js');
+ const mapped=adaptIncident({...incident,review});
+ assert.equal(mapped.backend.review_status,'resolved');
+ assert.equal(mapped.backend.review_disposition,'confirmed');
+ assert.equal(mapped.backend.review_note,review.note);
+});
+test('rejects invalid or mismatched review responses and surfaces save failures',async()=>{
+ const value={status:'investigating',disposition:'unreviewed',note:''};
+ let requests=0;
+ const client=new BlueTeamBackend('http://localhost:5173','demo',async()=>{requests++;return response({id:'wrong',review:value});});
+ await assert.rejects(()=>client.updateReview('event-1',{...value,status:'invalid'}),/valid review status/);
+ assert.equal(requests,0);
+ await assert.rejects(()=>client.updateReview('event-1',value),/did not match/);
+ const offline=new BlueTeamBackend('http://localhost:5173','demo',async()=>({ok:false,status:502,json:async()=>({detail:'Review could not be saved.'})}));
+ await assert.rejects(()=>offline.updateReview('event-1',value),/could not be saved/);
+});

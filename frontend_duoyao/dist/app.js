@@ -1,13 +1,15 @@
 import {validateResults} from './schema.js';
 import {BlueTeamBackend} from './backend.js';
 import {formatSummary} from './summary.js';
+import {reviewStatuses,reviewAssessments} from './review.js';
 
 const $=s=>document.querySelector(s);
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=v=>new Date(v).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'UTC'});
 const time=v=>new Date(v).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'UTC'});
 let data={schema_version:1,mode:'results',dataset:{name:'Investigation data'},incidents:[]},selected=null,activeTab='timeline';
-let backend=null, queuePage=0;
+let backend=null, queuePage=0, canReview=false;
+const reviewDrafts=new WeakMap();
 const pageSize=50, pendingDetails=new WeakSet(), detailErrors=new WeakMap();
 
 function notify(message,error=false){const n=$('#notice');n.textContent=message;n.hidden=false;n.className=error?'error':'';}
@@ -22,7 +24,7 @@ function render(){
   const pagination=$('#pagination');pagination.hidden=matches.length<=pageSize;
   pagination.innerHTML=`<button class="button" id="prev-page" ${queuePage===0?'disabled':''}>← Previous</button><span>${queuePage*pageSize+1}–${Math.min((queuePage+1)*pageSize,matches.length)} of ${matches.length}</span><button class="button" id="next-page" ${(queuePage+1)*pageSize>=matches.length?'disabled':''}>Next →</button>`;
   $('#prev-page').onclick=()=>{queuePage--;render();$('#queue-list').scrollTop=0;};$('#next-page').onclick=()=>{queuePage++;render();$('#queue-list').scrollTop=0;};
-  $('#queue-list').innerHTML=cases.length?cases.map(c=>`<button class="case ${c.priority} ${c.id===selected?'selected':''}" data-case="${escapeHTML(c.id)}" aria-pressed="${c.id===selected}"><div class="case-top"><span class="priority ${c.priority}">${c.priority} priority</span><span class="case-time">${date(c.start)} UTC</span></div><h3>${escapeHTML(c.title)}</h3><div class="case-meta"><code>${escapeHTML(c.entity)}</code><span>·</span><span>${c.alert_count} alerts</span><span class="case-arrow">${c.backend?.review_status&&c.backend.review_status!=='new'?`<span class="reviewed-label">${escapeHTML(c.backend.review_status)}</span>`:'↗'}</span></div></button>`).join(''):'<div class="empty"><strong>No matching investigations</strong>Try a different search or clear your filters.</div>';
+  $('#queue-list').innerHTML=cases.length?cases.map(c=>`<button class="case ${c.priority} ${c.id===selected?'selected':''}" data-case="${escapeHTML(c.id)}" aria-pressed="${c.id===selected}"><div class="case-top"><span class="priority ${c.priority}">${c.priority} priority</span><span class="case-time">${date(c.start)} UTC</span></div><h3>${escapeHTML(c.title)}</h3><div class="case-meta"><code>${escapeHTML(c.entity)}</code><span>·</span><span>${c.alert_count} alerts</span><span class="case-arrow">${c.backend?.review_status&&c.backend.review_status!=='new'?`<span class="status-badge status-${escapeHTML(c.backend.review_status)}">${escapeHTML(reviewStatuses[c.backend.review_status]?.[0]||c.backend.review_status)}</span>`:'↗'}</span></div></button>`).join(''):'<div class="empty"><strong>No matching investigations</strong>Try a different search or clear your filters.</div>';
   document.querySelectorAll('[data-case]').forEach(el=>el.addEventListener('click',()=>{selected=el.dataset.case;activeTab='timeline';render();}));renderDetail();
 }
 function renderDetail(){
@@ -32,7 +34,8 @@ function renderDetail(){
   $('#detail').innerHTML=`<h2>${escapeHTML(c.title)}</h2><div class="empty" role="status"><strong>${error?'Unable to load this event':'Loading original evidence…'}</strong>${error?'Please try again in a moment.':'Analyzing this event and retrieving evidence. AI analysis may take a moment.'}${error?'<p><button id="retry-detail" class="button">Retry</button></p>':''}</div>`;
   if(error)$('#retry-detail').onclick=()=>{detailErrors.delete(c);renderDetail();};else ensureDetail(c);return;
  }
- $('#detail').innerHTML=`<div class="detail-top"><span class="priority ${c.priority}">${c.priority} priority</span><span class="score-label">Review score <strong>${c.score}</strong><span>/100</span></span><span class="detail-id">${escapeHTML(c.id)}</span></div><h2>${escapeHTML(c.title)}</h2><div class="detail-meta"><code>${escapeHTML(c.entity)}</code><span>${escapeHTML(c.sources.join(' + '))}</span><span>·</span><span>${date(c.start)} – ${date(c.end)} UTC</span></div><div class="detail-actions"><span class="review-status">Status: ${escapeHTML(c.backend?.review_status||'Unknown')}</span><button id="export" class="button">↓ Export case</button></div><div class="summary-box"><div class="section-label"> WHAT HAPPENED</div><div class="summary-content">${formatSummary(c.summary)}</div></div><div class="tabs" role="tablist" aria-label="Investigation details">${[['timeline','Timeline'],['reasoning','Why this matters'],['evidence','Evidence']].map(([id,label])=>`<button class="tab ${activeTab===id?'active':''}" id="tab-${id}" data-tab="${id}" role="tab" aria-selected="${activeTab===id}" aria-controls="tab-panel">${label}${id==='evidence'?` <span>${c.evidence.length}</span>`:''}</button>`).join('')}</div><div class="tab-panel" id="tab-panel" role="tabpanel" aria-labelledby="tab-${activeTab}" tabindex="0"></div><div class="note">Priorities help guide investigation. They do not establish that an attack occurred.</div>`;
+ $('#detail').innerHTML=`<div class="detail-top"><span class="priority ${c.priority}">${c.priority} priority</span><span class="score-label">Review score <strong>${c.score}</strong><span>/100</span></span><span class="detail-id">${escapeHTML(c.id)}</span></div><h2>${escapeHTML(c.title)}</h2><div class="detail-meta"><code>${escapeHTML(c.entity)}</code><span>${escapeHTML(c.sources.join(' + '))}</span><span>·</span><span>${date(c.start)} – ${date(c.end)} UTC</span></div><div class="detail-actions"><span class="review-status">Status: <strong class="status-badge status-${escapeHTML(c.backend?.review_status)}">${escapeHTML(reviewStatuses[c.backend?.review_status]?.[0]||'Unknown')}</strong></span>${canReview?'<button id="edit-review" class="button">Update status</button>':''}<button id="export" class="button">↓ Export case</button></div>${renderReview(c)}<div class="summary-box"><div class="section-label"> WHAT HAPPENED</div><div class="summary-content">${formatSummary(c.summary)}</div></div><div class="tabs" role="tablist" aria-label="Investigation details">${[['timeline','Timeline'],['reasoning','Why this matters'],['evidence','Evidence']].map(([id,label])=>`<button class="tab ${activeTab===id?'active':''}" id="tab-${id}" data-tab="${id}" role="tab" aria-selected="${activeTab===id}" aria-controls="tab-panel">${label}${id==='evidence'?` <span>${c.evidence.length}</span>`:''}</button>`).join('')}</div><div class="tab-panel" id="tab-panel" role="tabpanel" aria-labelledby="tab-${activeTab}" tabindex="0"></div><div class="note">Priorities help guide investigation. They do not establish that an attack occurred.</div>`;
+ bindReview(c);
  $('#export').onclick=()=>{const blob=new Blob([JSON.stringify({schema_version:1,mode:data.mode,dataset:data.dataset,incidents:[c],review_status:c.backend?.review_status||'unknown'},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`sigsig-${c.id.replace(/[^a-z0-9_-]/gi,'_')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Case exported with evidence and current review status.');};
  document.querySelectorAll('[data-tab]').forEach(el=>{el.onclick=()=>{activeTab=el.dataset.tab;renderDetail();$(`#tab-${activeTab}`).focus();};el.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const keys=['timeline','reasoning','evidence'];activeTab=e.key==='Home'?keys[0]:e.key==='End'?keys[2]:keys[(keys.indexOf(activeTab)+(e.key==='ArrowRight'?1:2))%3];renderDetail();$(`#tab-${activeTab}`).focus();};});
  const panel=$('#tab-panel');
@@ -52,6 +55,47 @@ function renderDetail(){
   section.innerHTML='<h3>Score breakdown</h3><pre class="score-breakdown"></pre>';
   section.querySelector('pre').textContent=JSON.stringify({priority_components:c.backend.priority_components,rule_components:c.backend.score_components,ml:c.backend.ml},null,2);panel.append(section);
  }
+}
+function draftFor(c){
+ if(!reviewDrafts.has(c))reviewDrafts.set(c,{open:false,saving:false,error:'',status:c.backend.review_status,disposition:c.backend.review_disposition,note:c.backend.review_note});
+ return reviewDrafts.get(c);
+}
+function renderReview(c){
+ const d=draftFor(c);
+ if(!canReview||!d.open){
+  return `<div class="review-summary"><span>Assessment: ${escapeHTML(reviewAssessments[c.backend.review_disposition]||'Not assessed')}</span>${c.backend.review_note?`<p><strong>Review note</strong> ${escapeHTML(c.backend.review_note)}</p>`:''}${!canReview?'<p>Status editing is disabled for this deployment.</p>':''}</div>`;
+ }
+ return `<form id="review-form" class="review-form"><h3>Update review</h3><p>Status tracks the work. Assessment records your conclusion about the activity.</p><fieldset ${d.saving?'disabled':''}><div class="review-fields"><label for="review-status-input">Status<select id="review-status-input" aria-label="Review status" aria-describedby="review-status-help">${Object.entries(reviewStatuses).map(([value,[label]])=>`<option value="${value}" ${d.status===value?'selected':''}>${label}</option>`).join('')}</select></label><label for="review-assessment">Assessment<select id="review-assessment" aria-label="Review assessment">${Object.entries(reviewAssessments).map(([value,label])=>`<option value="${value}" ${d.disposition===value?'selected':''}>${label}</option>`).join('')}</select></label></div><p id="review-status-help">${escapeHTML(reviewStatuses[d.status]?.[1])}</p><label class="review-note-label" for="review-note">Review note <span>(optional)</span><textarea id="review-note" aria-label="Review note" maxlength="2000" rows="3" placeholder="What did you check, and why did you choose this status?">${escapeHTML(d.note)}</textarea></label><div class="review-buttons"><button type="submit" class="button primary">${d.saving?'Saving…':'Save review'}</button><button type="button" class="button" id="cancel-review">Cancel</button></div></fieldset><p class="review-error" role="alert">${escapeHTML(d.error)}</p><p class="review-sharing">Saved to the backend and shared with everyone using this dataset. You can change the status again later.</p></form>`;
+}
+function bindReview(c){
+ const d=draftFor(c);
+ if($('#edit-review')){
+  $('#edit-review').disabled=d.saving;
+  $('#edit-review').onclick=()=>{d.open=true;renderDetail();$('#review-status-input').focus();};
+ }
+ const form=$('#review-form');if(!form)return;
+ $('#review-status-input').onchange=e=>{d.status=e.target.value;$('#review-status-help').textContent=reviewStatuses[d.status][1];};
+ $('#review-assessment').onchange=e=>{d.disposition=e.target.value;};
+ $('#review-note').oninput=e=>{d.note=e.target.value;};
+ $('#cancel-review').onclick=()=>{reviewDrafts.delete(c);renderDetail();$('#edit-review')?.focus();};
+ form.onsubmit=async e=>{
+  e.preventDefault();if(d.saving)return;
+  d.saving=true;d.error='';renderDetail();
+  const dataset=data,client=backend;
+  try{
+   const saved=await client.updateReview(c.id,{status:d.status,disposition:d.disposition,note:d.note});
+   if(data!==dataset||backend!==client)return;
+   c.backend.review_status=saved.status;c.backend.review_disposition=saved.disposition;c.backend.review_note=saved.note;
+   reviewDrafts.delete(c);
+   const hidden=!filtered().some(item=>item.id===c.id);
+   notify(`Review saved: ${reviewStatuses[saved.status][0]}.${hidden?' This event no longer matches the current filters.':''}`);
+   render();
+   if(selected===c.id)$('#edit-review')?.focus();
+  }catch(error){
+   d.error=error.message;d.saving=false;
+   if(data===dataset&&backend===client){if(selected===c.id)renderDetail();else notify(`Review was not saved: ${error.message}`,true);}
+  }
+ };
 }
 function renderBenign(c){
  const hypotheses=c.backend?.benign_hypotheses||[];
@@ -78,9 +122,23 @@ async function start(){
  $('#detail').innerHTML='<div class="empty"><strong>Your evidence workspace</strong>Select an event once the investigation data is ready.</div>';
  try{
   const response=await fetch('/app-config.json',{cache:'no-store',signal:AbortSignal.timeout(10000)});
-  if(!response.ok)throw Error('Application configuration unavailable.');
+  if(!response.ok){
+   const failure=await response.json().catch(()=>null);
+   throw Error(failure?.detail||(response.status===404?'Deployment setup is incomplete: the application configuration endpoint is missing.':'Application configuration unavailable.'));
+  }
   const config=await response.json();
   if(typeof config.job_id!=='string'||!config.job_id.trim())throw Error('No dataset configured.');
+<<<<<<< HEAD
+  canReview=config.can_review===true;
+=======
+  if(typeof config.results_url==='string'&&config.results_url.startsWith('/')&&!config.results_url.startsWith('//')){
+   const snapshot=await fetch(config.results_url,{cache:'no-store',signal:AbortSignal.timeout(60000)});
+   if(!snapshot.ok)throw Error('Published event snapshot unavailable.');
+   loadResults(await snapshot.json(),null);
+   for(const el of [$('#search'),$('#priority-filter'),$('#status-filter')])el.disabled=false;
+   return;
+  }
+>>>>>>> bf49a98c31c85f47b888e4e41aa57946e77b42b9
   const client=new BlueTeamBackend(location.origin,config.job_id);
   const results=await client.results((loaded,total)=>{$('#dataset-description').textContent=`Loading ${loaded.toLocaleString()} of ${total.toLocaleString()} events…`;});
   loadResults(results,client);
@@ -88,6 +146,7 @@ async function start(){
  }catch(err){
   console.error('Unable to load investigation data:',err.message);
   $('#mode-tag').textContent='Unavailable';$('#dataset-description').textContent='';
+  notify(err.message,true);
   $('#queue-list').innerHTML='<div class="empty"><strong>Events are temporarily unavailable</strong>Please try again in a moment.<p><button id="retry-load" class="button primary">Try again</button></p></div>';
   $('#detail').innerHTML='<div class="empty"><strong>No event data loaded</strong>Your events will appear here when the service is available.</div>';
   $('#retry-load').onclick=start;

@@ -1,0 +1,6 @@
+# Use this file when the Netlify base directory is frontend_duoyao.
+[build]
+  publish = "dist"
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
