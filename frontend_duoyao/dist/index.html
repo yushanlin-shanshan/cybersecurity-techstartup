@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="sigsig — an evidence-first security alert investigation workspace.">
-  <title>sigsig · Alert workspace</title>
+  <title>sigsig v2.0 · Alert workspace</title>
   <link rel="icon" type="image/svg+xml" href="logo.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
-    <header><a class="wordmark" href="#" aria-label="sigsig home"><img class="brand-mark" src="logo.svg" alt="S squared" width="32" height="32">sigsig</a><span class="header-label">Security investigations</span><span class="local-tag"><i></i> Investigation workspace</span></header>
+    <header><a class="wordmark" href="#" aria-label="sigsig home"><img class="brand-mark" src="logo.svg" alt="S squared" width="32" height="32">sigsig</a><span class="header-label">Security investigations</span><span class="local-tag"><i></i> sigsig v2.0</span></header>
     <main>
       <div class="page-heading"><div><h1>Events</h1><p>See what happened. Decide what needs attention.</p></div></div>
       <div class="dataset-toolbar"><label for="dataset-select">Dataset</label><select id="dataset-select" disabled aria-label="Dataset"><option>Loading datasets…</option></select><button id="open-upload" class="button primary" hidden>Upload dataset</button></div>
@@ -46,7 +46,7 @@
     } else {
       const appScript = document.createElement('script');
       appScript.type = 'module';
-      appScript.src = './app.js';
+      appScript.src = './app.js?v=2';
       document.body.append(appScript);
     }
   </script>
