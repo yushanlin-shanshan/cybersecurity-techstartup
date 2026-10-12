@@ -4,9 +4,11 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Annotated, Literal
 import hmac
+import hashlib
 import json
 import re
 import tempfile
+import time
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -78,6 +80,29 @@ def create_app(settings=None):
     store = Store(settings.data_dir)
     related_cache = OrderedDict()
     related_lock = __import__('threading').Lock()
+    explanation_cache = OrderedDict()
+    explanation_lock = __import__('threading').Lock()
+
+    def detail_explanation(g, records):
+        if not settings.llm_enabled:
+            return explain(settings, g, records, 'Explain this incident')
+        # Hash all inputs so changed evidence or review data invalidates the result.
+        key = hashlib.sha256(json.dumps([settings.openai_model, g, records], sort_keys=True).encode()).hexdigest()
+        # Serialize first generations to avoid duplicate provider calls on refresh.
+        with explanation_lock:
+            cached = explanation_cache.get(key)
+            if cached and time.monotonic() - cached[0] < 600:
+                explanation_cache.move_to_end(key)
+                return cached[1]
+            result = explain(settings, g, records, 'Explain this incident', use_llm=True)
+            if result['mode'] == 'llm':
+                explanation_cache[key] = (time.monotonic(), result)
+                explanation_cache.move_to_end(key)
+                if len(explanation_cache) > 128:
+                    explanation_cache.popitem(last=False)
+            else:
+                explanation_cache.pop(key, None)
+            return result
 
     @asynccontextmanager
     async def lifespan(app):
@@ -213,7 +238,7 @@ def create_app(settings=None):
     def detail(job_id: str, incident_id: str):
         g = incident(job_id, incident_id)
         records = selected_records(store, job_id, g)
-        return dict(incident=g, representative_evidence=records, explanation=explain(settings, g, records, 'Explain this incident'))
+        return dict(incident=g, representative_evidence=records, explanation=detail_explanation(g, records))
 
     @app.get('/api/v1/jobs/{job_id}/incidents/{incident_id}/evidence')
     def evidence(job_id: str, incident_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):

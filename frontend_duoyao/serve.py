@@ -1,4 +1,4 @@
-"""Serve SignalDesk and forward its read-only API through the same origin.
+"""Serve sigsig and forward its read-only API through the same origin.
 
 Run: python3 serve.py
 Operator configuration: BACKEND_URL, SIGNALDESK_JOB_ID, PORT.
@@ -41,7 +41,7 @@ class Handler(SimpleHTTPRequestHandler):
             # The upstream is operator-controlled, never supplied by page content.
             try:
                 request = Request(BACKEND + self.path, headers={'Accept': 'application/json'})
-                with urlopen(request, timeout=25) as response:
+                with urlopen(request, timeout=55) as response:
                     self.reply(response.status, response.read(), response.headers.get('Content-Type', 'application/json'))
             except HTTPError as error:
                 self.reply(error.code, error.read(), error.headers.get('Content-Type', 'application/json'))
@@ -60,5 +60,5 @@ if __name__ == '__main__':
     if url.scheme not in ('http', 'https') or not url.netloc or url.query or url.fragment or url.username or url.password:
         raise SystemExit('BACKEND_URL must be a plain HTTP(S) service URL.')
     port = int(os.getenv('PORT', '5173'))
-    print(f'SignalDesk: http://127.0.0.1:{port}', flush=True)
+    print(f'sigsig: http://127.0.0.1:{port}', flush=True)
     ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()

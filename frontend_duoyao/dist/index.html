@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="SignalDesk — an evidence-first security alert investigation workspace.">
-  <title>SignalDesk · Alert workspace</title>
+  <meta name="description" content="sigsig — an evidence-first security alert investigation workspace.">
+  <title>sigsig · Alert workspace</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
-    <header><a class="wordmark" href="#"><span class="brand-mark">S</span>SignalDesk</a><span class="header-label">Security investigations</span><span class="local-tag"><i></i> Local workspace</span></header>
+    <header><a class="wordmark" href="#" aria-label="sigsig home"><img class="brand-mark" src="logo.svg" alt="S squared" width="32" height="32">sigsig</a><span class="header-label">Security investigations</span><span class="local-tag"><i></i> Local workspace</span></header>
     <main>
       <div class="page-heading"><div><h1>Events</h1><p>See what happened. Decide what needs attention.</p></div></div>
       <div class="source-bar"><div><span id="mode-tag" class="pill">Loading</span><strong id="dataset-name">Investigation data</strong><span id="dataset-description"></span></div></div>
@@ -18,9 +19,19 @@
         <div class="queue"><div class="queue-heading"><h2>All events <span id="queue-count"></span></h2><span class="subtle">Highest priority first</span></div><div class="filters"><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search host, title, evidence…" aria-label="Search investigations"><kbd>/</kbd></label><div class="selects"><select id="priority-filter" aria-label="Filter priority"><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></select><select id="status-filter" aria-label="Filter review status"><option value="all">All statuses</option><option value="new">New</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></select></div></div><div id="queue-list"></div><div id="pagination" class="pagination" hidden></div><div class="queue-footer"><span class="dot"></span> Priority is a review aid, not an attack probability.</div></div>
         <div id="detail" class="detail"></div>
       </section>
-      <footer><strong>SignalDesk</strong><span>Review priorities, then check the evidence.</span><a href="https://zenodo.org/records/8263181" target="_blank" rel="noopener noreferrer">AIT dataset reference ↗</a></footer>
+      <footer><strong>sigsig</strong><span>Review priorities, then check the evidence.</span><a href="https://zenodo.org/records/8263181" target="_blank" rel="noopener noreferrer">AIT dataset reference ↗</a></footer>
     </main>
   </div>
-  <script type="module" src="app.js"></script>
+  <script>
+    // File previews cannot load ES modules or the same-origin backend API.
+    if (location.protocol === 'file:') {
+      document.querySelector('main').innerHTML = '<section class="empty"><h1>Open the running app</h1><p>This is a file preview. To see your events and explanations, open sigsig through its local web server.</p><p><a class="button primary" style="display:inline-block;margin-top:18px" href="http://127.0.0.1:5173/">Open sigsig</a></p><p style="margin-top:18px">If the app does not open, start the local frontend and backend services, then try again.</p></section>';
+    } else {
+      const appScript = document.createElement('script');
+      appScript.type = 'module';
+      appScript.src = './app.js';
+      document.body.append(appScript);
+    }
+  </script>
 </body>
 </html>

@@ -139,16 +139,20 @@ def test_llm_response_validation_and_fallback(service):
     g = app.state.store.incident(job['id'], incident_id)
     records = app.state.store.evidence(job['id'], incident_id)['items']
     settings = replace(app.state.settings, llm_enabled=True, openai_api_key='fake-key')
-    def provider(cite):
+    def provider(cite, benign_cite=None):
         def handle(request):
             data=json.loads(request.content)
             assert data['store'] is False
             assert data['text']['format']['strict'] is True
-            narrative=dict(answer='An execution indicator was observed.', claims=[dict(text='A record has an execution indicator.', evidence_ids=[cite])],next_steps=['Review this evidence.'],caveats=['Success is unconfirmed.'])
+            narrative=dict(answer='An execution indicator was observed.', claims=[dict(text='A record has an execution indicator.', evidence_ids=[cite])],benign_explanations=[dict(text='This could be an authorized administration command.', evidence_ids=[cite if benign_cite is None else benign_cite], verification='Confirm the command and timestamp with the administrator.')],benign_assessment='Authorization has not been established.',next_steps=['Review this evidence.'],caveats=['Success is unconfirmed.'])
             return httpx.Response(200,json={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps(narrative)}]}]})
         return httpx.MockTransport(handle)
     result=explain(settings,g,records,'Explain',True,provider(records[0]['alert_id']))
     assert result['mode']=='llm'
+    assert result['benign_explanations'][0]['verification']
+    assert result['benign_explanations'][0]['evidence_ids'] == [records[0]['alert_id']]
+    unsupported = explain(settings,g,records,'Explain',True,provider(records[0]['alert_id'],999999))
+    assert unsupported['mode']=='local' and unsupported['benign_explanations']==[]
     bad=explain(settings,g,records,'Explain',True,provider(999999))
     assert bad['mode']=='local' and bad['fallback_reason']
     failure=explain(settings,g,records,'Explain',True,httpx.MockTransport(lambda _:httpx.Response(429,json={'error':'Rate limit'})))
@@ -187,3 +191,30 @@ def test_job_and_analyst_feedback_survive_restart(tmp_path):
         assert client.get(f"/api/v1/jobs/{job['id']}").json()['status']=='ready'
         review=client.get(f"/api/v1/jobs/{job['id']}/incidents/{incident['id']}").json()['incident']['review']
         assert review['note']=='Persist me' and review['status']=='investigating'
+
+
+def test_detail_generates_llm_analysis_and_caches_only_success(tmp_path, monkeypatch):
+    import importlib
+    calls = []
+    fallback = [False]
+    def fake_explain(settings, g, records, question, use_llm=False):
+        calls.append(use_llm)
+        result = explain(settings, g, records, question)
+        if not fallback[0]:
+            result.update(mode='llm', benign_explanations=[dict(text='Possible authorized test.', verification='Check authorization.', evidence_ids=[records[0]['alert_id']])])
+        return result
+    monkeypatch.setattr(importlib.import_module('backend.app'), 'explain', fake_explain)
+    with TestClient(create_app(Settings(data_dir=tmp_path/'llm', llm_enabled=True, openai_api_key='fake'))) as client:
+        job = wait_job(client, client.post('/api/v1/jobs/batch', json={'records':[record()]}).json()['id'])
+        ident = client.get(f"/api/v1/jobs/{job['id']}/incidents").json()['items'][0]['id']
+        url = f"/api/v1/jobs/{job['id']}/incidents/{ident}"
+        first = client.get(url).json()
+        assert first['explanation']['benign_explanations'][0]['verification'] == 'Check authorization.'
+        assert client.get(url).json() == first
+        assert calls == [True]
+        client.patch(url+'/feedback', json={'status':'investigating','disposition':'unreviewed'})
+        fallback[0] = True
+        assert client.get(url).json()['explanation']['mode']=='local'
+        fallback[0] = False
+        assert client.get(url).json()['explanation']['mode']=='llm'
+        assert calls == [True, True, True]

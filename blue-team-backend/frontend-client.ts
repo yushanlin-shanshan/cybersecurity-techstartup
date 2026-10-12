@@ -32,6 +32,9 @@ export type Explanation = {
   mode: 'local' | 'llm';
   answer: string;
   claims: { text: string; evidence_ids: number[] }[];
+  benign_explanations: { text: string; evidence_ids: number[]; verification: string }[];
+  benign_assessment: string;
+  model?: string;
   next_steps: string[];
   caveats: string[];
   evidence_ids: number[];

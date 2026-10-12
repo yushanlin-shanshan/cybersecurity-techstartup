@@ -1,6 +1,6 @@
 # Developer Setup
 
-SignalDesk loads its configured dataset automatically. Backend configuration belongs to the deployment setup, not to the user interface.
+sigsig loads its configured dataset automatically. Backend configuration belongs to the deployment setup, not to the user interface.
 
 ## 1. Start the Blue Team backend
 
@@ -11,12 +11,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m backend.cli demo
-LLM_ENABLED=false uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1
+uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
 The backend's `demo` job contains the complete real `russellmitchell` scenario: 45,544 alerts grouped into 1,825 incidents. It is not fictional UI data.
 
-Python 3.12.6 was used for integration verification. On Windows, use `.venv\Scripts\activate` and set `LLM_ENABLED=false` in the backend `.env` instead of the shell prefix above.
+Python 3.12.6 was used for integration verification. On Windows, use `.venv\Scripts\activate` and configure LLM settings in the backend `.env`.
 
 ## 2. Start the website
 
@@ -41,18 +41,19 @@ These settings are for developers. There is no URL field, results upload, or dem
 ## Data flow
 
 ```text
-Browser → SignalDesk web server → Blue Team API → Stored analysis and evidence
+Browser → sigsig web server → Blue Team API → Stored analysis and evidence
 ```
 
 The browser requests `/app-config.json` for the configured job ID, retrieves all incident-summary pages, and then loads details on selection. It displays 50 cards per page and supports up to 10,000 events per job. Larger jobs return an explicit limit error rather than being silently truncated.
 
-No backend code changes are required. Backend errors or unavailable services produce a retry state; there is no fictional-data fallback.
+Use the matching updated backend, which returns `benign_explanations` and `benign_assessment` in the explanation response. Backend errors or unavailable services produce a retry state; there is no fictional-data fallback.
 
 ## Current boundaries
 
 - Read-only API access; no raw-file uploads, Q&A calls, or analyst-feedback writes.
 - Review filters and counts use actual backend statuses.
-- Explanations come from the backend's local explanation endpoint. No paid LLM is called by this interface.
+- When the backend has `LLM_ENABLED=true` and a server-side `OPENAI_API_KEY`, event details automatically include an LLM explanation. Successful results are cached server-side for 10 minutes. API credentials never enter the frontend.
+- Possible normal explanations display AI hypotheses, verification steps, and links to related evidence. If generation fails or is disabled, the page clearly labels AI analysis as unavailable; no alternatives are invented.
 - Representative evidence is labeled with its displayed count and total incident count.
 - Citation membership is checked, but factual correctness and attack detection accuracy still require evaluation.
 - This local gateway expects a backend without API-token authentication. Public hosting needs a separate authentication and deployment design.

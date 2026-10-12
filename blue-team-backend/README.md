@@ -79,7 +79,7 @@ All data routes are under `/api/v1`. IDs are scoped to their job; evidence IDs m
 | GET | `/jobs/{job}` | State, phase, accepted/rejected counts and errors |
 | GET | `/jobs/{job}/stats` | Incident counts by scenario, priority and analyst state |
 | GET | `/jobs/{job}/incidents` | Ranked, paginated investigation queue |
-| GET | `/jobs/{job}/incidents/{id}` | Incident details, local explanation and representative original records |
+| GET | `/jobs/{job}/incidents/{id}` | Incident details, automatic LLM explanation when enabled, and representative original records |
 | GET | `/jobs/{job}/incidents/{id}/evidence` | All member records, paginated and ordered by event time |
 | GET | `/jobs/{job}/incidents/{id}/related` | TF-IDF related-incident suggestions with entity/time support |
 | POST | `/jobs/{job}/incidents/{id}/ask` | Incident-specific questions or explanation; local or opt-in LLM |
@@ -186,7 +186,9 @@ OPENAI_API_KEY=your-key-here
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-Restart the backend, then call the Q&A endpoint with `use_llm: true`, or:
+Restart the backend. Opening an incident now automatically requests an LLM explanation when `LLM_ENABLED=true`. Successful detail explanations are cached in memory for 10 minutes (up to 128 entries); changed incident/evidence inputs invalidate the cache. Generation is on demand, never across the whole queue. Each `benign_explanations` item contains `text`, `evidence_ids`, and `verification`; `benign_assessment` states uncertainty. An empty list is permitted when no defensible alternative is supported.
+
+The Q&A endpoint still requires `use_llm: true`, for example:
 
 ```ts
 const answer = await api.ask(jobId, incidentId,
@@ -195,7 +197,7 @@ const answer = await api.ask(jobId, incidentId,
 
 The provider uses the [OpenAI Responses API with Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). It sends the group statistics and up to 12 selected, bounded evidence excerpts. Raw records are treated as untrusted data; common credential assignments are redacted from excerpts, but this is not exhaustive secret detection. The complete dataset is never sent. `store` is set to `false`. Citation IDs are schema-constrained and checked against the supplied evidence; this verifies citation membership, not factual entailment of every statement. Analyst review remains necessary.
 
-Missing keys, provider errors, incomplete responses and invalid citations fall back to local explanations with an explicit `fallback_reason`. Both server opt-in and request opt-in are required. **Never put this API key in Netlify frontend environment variables, browser code, or Git.** No live paid LLM call was made during development; the integration was tested using mocked provider responses, including invalid citations and rate limits.
+Missing keys, provider errors, incomplete responses and invalid citations fall back to local explanations with an explicit `fallback_reason`. Detail requests follow the server LLM setting; Q&A requires request opt-in as well. **Never put this API key in Netlify frontend environment variables, browser code, or Git.** Regression tests use mocked provider responses, including invalid benign-hypothesis citations and rate limits.
 
 ## Deployment and storage
 

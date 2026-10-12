@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>sigsig — S squared</title>
+  <rect width="64" height="64" rx="10" fill="#245ce0"/>
+  <g fill="#fff" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    <text x="10" y="49" font-size="45">S</text>
+    <text x="40" y="26" font-size="23">2</text>
+  </g>
+</svg>

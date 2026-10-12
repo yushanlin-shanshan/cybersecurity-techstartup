@@ -34,3 +34,18 @@ test('propagates authentication failure without replacing data',async()=>{
  const client=new BlueTeamBackend('http://localhost:8000','demo',async()=>({ok:false,status:401}));
  await assert.rejects(()=>client.results(),/authentication required/);
 });
+
+
+test('maps LLM benign hypotheses and checks their evidence references',()=>{
+ const client=new BlueTeamBackend('http://localhost:8000');
+ const payload={incident,explanation:{answer:'Observed activity.',mode:'llm',model:'test-model',claims:[{text:'Observed.',evidence_ids:[7]}],benign_explanations:[{text:'This could be an authorized test.',verification:'Check the approval record.',evidence_ids:[7]}],benign_assessment:'Authorization is unknown.',caveats:[],next_steps:[]},representative_evidence:[{alert_id:7,normalized:{time:1642723200,description:'Observed activity'},original_record:{}}]};
+ const detail=validateResults({schema_version:1,mode:'results',dataset:{name:'test'},incidents:[adaptDetail(payload,client)]}).incidents[0];
+ assert.match(detail.benign_explanations[0],/Check the approval record/);
+ assert.equal(detail.backend.benign_hypotheses[0].evidence_ids[0],7);
+ assert.equal(detail.backend.benign_assessment,'Authorization is unknown.');
+ payload.explanation.benign_explanations[0].evidence_ids=[999];
+ assert.throws(()=>adaptDetail(payload,client),/absent/);
+ payload.explanation.benign_explanations=[];
+ payload.explanation.mode='local';
+ assert.equal(adaptDetail(payload,client).backend.benign_hypotheses.length,0);
+});

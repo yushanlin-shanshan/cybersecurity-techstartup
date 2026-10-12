@@ -1,4 +1,4 @@
-# SignalDesk
+# sigsig
 
 An English-language investigation interface driven by the Blue Team backend. Opening the page automatically loads the configured dataset. Users do not enter service URLs, import result files, or switch to fictional demo data.
 
@@ -10,7 +10,7 @@ Start the backend using its README, including `python -m backend.cli demo` to pr
 python3 serve.py
 ```
 
-Open http://127.0.0.1:5173. On Windows, use `python` if needed.
+Open http://127.0.0.1:5173. Do not double-click `dist/index.html`: a file preview cannot load backend data and instead shows an Open sigsig link. On Windows, use `python` if needed.
 
 Use `serve.py`, not a plain static HTTP server: it serves both the interface and the same-origin API gateway. No frontend dependency installation is needed. See `CONNECT_BACKEND.md` for the complete developer setup.
 
@@ -22,10 +22,11 @@ Use `serve.py`, not a plain static HTTP server: it serves both the interface and
 - Provides search, priority/status filters, and pagination across the loaded queue.
 - Loads representative original evidence and explanations when an event is selected.
 - Preserves original records, source files, line references, and citations.
+- Formats event summaries with paragraphs, headings, emphasis, and lists. Long explanations expand on demand without discarding any text.
 - Exports a selected event as JSON.
 - Shows a retry state if data cannot be loaded. Never substitutes fictional records or zero counts for a failed request.
 
-This interface is read-only. It does not change backend review status, upload raw datasets, or invoke paid language models. The timeline displays representative evidence rather than every member record.
+This interface is read-only. It does not change backend review status or upload raw datasets. When enabled on the backend, opening an event generates a paid LLM explanation using bounded evidence excerpts. The timeline displays representative evidence rather than every member record.
 
 ## Files
 
@@ -34,6 +35,7 @@ This interface is read-only. It does not change backend review status, upload ra
 - `dist/app.js`: Automatic loading, filtering, pagination, and evidence display.
 - `dist/backend.js`: Adapter for the Blue Team API.
 - `dist/schema.js`: Internal result validation.
+- `dist/summary.js`: Escaped formatting for the supported summary Markdown subset.
 - `CONNECT_BACKEND.md`: Developer service setup and integration limits.
 - `BACKEND_CONTRACT.md`: Internal data mapping and export format.
 - `tests/backend.test.js`: Adapter regression tests.
@@ -42,5 +44,5 @@ This interface is read-only. It does not change backend review status, upload ra
 ## Tests
 
 ```sh
-node --test tests/backend.test.js
+node --test tests/*.test.js
 ```

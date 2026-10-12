@@ -1,4 +1,4 @@
-# SignalDesk Internal Data Contract · v1
+# sigsig Internal Data Contract · v1
 
 The website automatically reads the Blue Team API through `dist/backend.js`. This document describes the internal normalized shape and single-event export format, not a user-facing upload requirement. The backend keeps its native API schema. See `CONNECT_BACKEND.md` for deployment setup.
 
@@ -51,3 +51,8 @@ All displayed times use UTC. Preserve event timestamps rather than substituting 
 - The backend is responsible for preserving and interpreting AMiner's `TrainingMode` flag, missing fields, and source-field semantics.
 - Severity values from different detectors must not be treated as a shared numerical scale without an explicit mapping.
 - Review status is read from backend records. This UI does not write feedback. Single-case exports include `review_status`.
+
+
+## LLM alternative-cause mapping
+
+The backend explanation adds `benign_explanations` (up to three objects with `text`, `evidence_ids`, and `verification`) and `benign_assessment` (uncertainty or abstention). The adapter retains these objects in `backend.benign_hypotheses` for display and creates readable strings in the normalized `benign_explanations` array for exports. Every cited ID must match representative evidence in the detail response. The UI displays an explicit unavailable state for local fallback; an empty LLM list means the model could not suggest a defensible alternative, not that an attack is confirmed.

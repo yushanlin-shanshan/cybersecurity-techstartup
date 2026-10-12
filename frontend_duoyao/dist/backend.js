@@ -8,7 +8,7 @@ export class BlueTeamBackend {
     this.path=`/api/v1/jobs/${encodeURIComponent(this.job)}`;
   }
   async get(path){
-    const response=await this.fetcher(this.base+path,{credentials:'omit',signal:AbortSignal.timeout(20000)});
+    const response=await this.fetcher(this.base+path,{credentials:'omit',signal:AbortSignal.timeout(60000)});
     if(!response.ok)throw Error(`Backend HTTP ${response.status}${response.status===401?': authentication required; this connector supports a local backend without an API token.':''}`);
     return response.json();
   }
@@ -42,9 +42,12 @@ export function adaptDetail(payload,client){
   c.summary=ex.answer;
   c.reasons=ex.claims.map(claim=>`${claim.text} [Evidence: ${claim.evidence_ids.join(', ')}]`);
   c.missing_context=ex.caveats||[];c.next_steps=ex.next_steps||[];
+  const alternatives=ex.benign_explanations??[];
+  if(!Array.isArray(alternatives)||alternatives.some(item=>typeof item.text!=='string'||typeof item.verification!=='string'||!Array.isArray(item.evidence_ids)||!item.evidence_ids.length))throw Error('Unexpected benign explanation format.');
+  c.benign_explanations=alternatives.map(item=>`${item.text} Verify: ${item.verification} [Evidence: ${item.evidence_ids.join(', ')}]`);
   c.evidence=payload.representative_evidence.map(e=>({id:String(e.alert_id),timestamp:new Date(e.normalized.time*1000).toISOString(),title:e.normalized.description,description:`${e.normalized.source||'Unknown file'} · line ${e.normalized.line??'unknown'} · ${e.normalized.sensor||'Unknown detector'}`,source:e.normalized.sensor||'Unknown',raw:e.original_record}));
   const available=new Set(c.evidence.map(e=>e.id));
-  if(ex.claims.some(claim=>claim.evidence_ids.some(id=>!available.has(String(id)))))throw Error('An explanation cites evidence absent from the detail response.');
-  c.backend={...c.backend,loaded:true,explanation_mode:ex.mode,evidence_url:client.evidenceURL(c.id)};
+  if([...ex.claims,...alternatives].some(claim=>claim.evidence_ids.some(id=>!available.has(String(id)))))throw Error('An explanation cites evidence absent from the detail response.');
+  c.backend={...c.backend,loaded:true,explanation_mode:ex.mode,benign_hypotheses:alternatives,benign_assessment:ex.benign_assessment||'Alternative-cause analysis is not available for this event.',explanation_model:ex.model||null,evidence_url:client.evidenceURL(c.id)};
   return c;
 }
