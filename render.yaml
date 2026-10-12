@@ -1,0 +1,30 @@
+# Paid compute and a persistent disk. Review Render's quoted price before creating.
+services:
+  - type: web
+    name: sigsig-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./blue-team-backend/Dockerfile
+    dockerContext: ./blue-team-backend
+    dockerCommand: sh -c 'python -m backend.cli demo && exec uvicorn backend.app:app --host 0.0.0.0 --port "$PORT" --workers 1'
+    healthCheckPath: /health
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: PORT
+        value: "10000"
+      - key: API_TOKEN
+        generateValue: true
+      - key: LLM_ENABLED
+        value: "false"
+      - key: MAX_UPLOAD_MB
+        value: "4"
+      - key: MAX_EXPANDED_MB
+        value: "64"
+      - key: MAX_ALERTS
+        value: "100000"
+    disk:
+      name: sigsig-data
+      mountPath: /data
+      sizeGB: 1
