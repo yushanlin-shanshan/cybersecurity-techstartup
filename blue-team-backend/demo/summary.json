@@ -1,0 +1,17 @@
+{
+  "input": "AIT-ADS russellmitchell scenario (retained original records)",
+  "counts": {
+    "input": 45544,
+    "accepted": 45544,
+    "rejected": 0,
+    "fallback_times": 0
+  },
+  "groups": 1825,
+  "gap_minutes": 15,
+  "max_span_minutes": 60,
+  "syslog_year": 2022,
+  "scenario": "russellmitchell",
+  "limit": 0,
+  "dataset": "https://zenodo.org/records/8263181",
+  "labels_used": false
+}

@@ -1,0 +1,17 @@
+{
+  "backend_tests": 9,
+  "typescript_strict_check": "passed",
+  "real_upload": {
+    "alerts": 45544,
+    "incidents": 1825,
+    "rejected": 0
+  },
+  "full_import": {
+    "alerts": 2655821,
+    "incidents": 26757,
+    "scenarios": 8
+  },
+  "live_http_checks": "passed",
+  "llm_testing": "mocked provider responses; no live paid call",
+  "accuracy_evaluation": "not performed"
+}
