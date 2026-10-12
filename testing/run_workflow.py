@@ -24,6 +24,7 @@ ROOT = workflow_lib.ROOT
 UNIT_TESTS = (
     ROOT / "testing" / "test_detection_metrics.py",
     ROOT / "testing" / "test_workflow.py",
+    ROOT / "testing" / "test_detector.py",
 )
 REPORT_PATH = ROOT / "testing" / "output" / "workflow_report.json"
 

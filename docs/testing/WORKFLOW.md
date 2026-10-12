@@ -12,13 +12,15 @@ python3 testing/run_workflow.py
 
 不需要安装 pytest，也不需要 API key。Python 3.12 标准库就够。
 
-成功时第一行是：
+检测器实现了当前合同并且 8 个场景都匹配时，第一行是：
 
 ```text
-测试流程: 通过（检测器还没实现，场景已装载但未计分）
+测试流程: 通过（检测器与合成场景一致）
 ```
 
-退出码是 0。这表示测试流程本身是通的：场景文件有效、密钥扫描没有命中、单元测试通过。它不表示产品检测准确。
+退出码是 0。这表示这 8 个合成场景和密钥扫描、单元测试通过。它不表示生产环境里的检测准确，也不表示应用是安全的。
+
+`backend/detection.py` 仍为空、或还没有 `detect()` 时，第一行仍是“检测器还没实现，场景已装载但未计分”，场景状态为 `blocked`。
 
 机器可读结果写在 `testing/output/workflow_report.json`。这个文件不进 git。
 
@@ -33,13 +35,9 @@ GitHub Actions 跑的是同一条命令：`.github/workflows/test.yml`。
 
 ## 现在仓库里实际有什么
 
-队友在 `main` 上加了空文件：
+`backend/detection.py` 实现了上面这一条失败后成功的规则。`backend/preprocessing.py` 只检查事件列表的形状，不解析 CSV 或 JSON 文件。没有前端、数据库或模型调用。
 
-- `backend/detection.py`
-- `backend/preprocessing.py`
-- `notebooks/`
-
-`detection.py` 是空的，所以流程把 8 个场景标成 `blocked`，并且不算 precision / recall / F1。
+最近一次本地工作流把 8 个场景都标成 `pass`，并打印了合成合同上的 TP 3、FP 0、TN 5、FN 0。那不是生产准确率。
 
 ## 队友要接上的函数
 
