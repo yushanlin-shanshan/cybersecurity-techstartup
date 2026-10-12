@@ -25,6 +25,7 @@ UNIT_TESTS = (
     ROOT / "testing" / "test_detection_metrics.py",
     ROOT / "testing" / "test_workflow.py",
     ROOT / "testing" / "test_detector.py",
+    ROOT / "testing" / "test_detector_adversarial.py",
 )
 REPORT_PATH = ROOT / "testing" / "output" / "workflow_report.json"
 

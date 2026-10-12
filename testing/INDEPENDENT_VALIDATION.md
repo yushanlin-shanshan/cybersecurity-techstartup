@@ -1,132 +1,96 @@
-# Independent validation proposal
+# Independent validation
 
-Date: 2026-10-12. Detector under review: `backend/detection.py` and `backend/preprocessing.py` on branch `cursor/testing-baseline-report-c048`.
+Date: 2026-10-12. Scope: approved MVP contract for `backend/detection.py` and `backend/preprocessing.py`.
 
-Detection logic was not changed. `testing/reference_rule.py` and the existing assertions were not changed. `testing/test_detector_adversarial.py` was not added. This file is the test plan waiting for approval.
+Production detection logic was not changed. `testing/reference_rule.py` and existing assertions were not changed. These synthetic tests do not show production accuracy, and they are not a security review of a deployed application.
 
-Passing the original eight scenarios, or the observations below, does not show production accuracy or that the application is secure.
+## Approved contract
 
-## Explicit contract
+1. “Later” means a later position in the input list. A conflicting timestamp does not change the decision.
+2. No time window. Five failures may span multiple days.
+3. Each valid input record counts. This task does not deduplicate.
+4. Leading and trailing whitespace on usernames is stripped. Matching stays case-sensitive. There is no extra Unicode normalization.
+5. Only canonical action names count, including `login_failed` and `login_success`. Unknown values are not lowercased.
+6. Timestamps do not order events. Invalid or missing timestamps must not change the decision when the rest of the record is valid. Timestamp checks are recorded separately below.
+7. Duplicate event ids may appear in evidence. Every evidence id must come from an input record that supports the matched pattern.
 
-Confirmed from `testing/scenarios/auth_scenarios.json`, `docs/testing/WORKFLOW.md`, and `_validate_output` in `testing/workflow_lib.py`:
+Password spraying, unfamiliar-source detection, time-window detection, and deduplication stay out of scope.
 
-- Input to `detect` is a list of objects. The fields the shipped scenarios use are `event_id`, `timestamp`, `user`, `action`, `source`, and `message`.
-- Flag when the same user has at least five `login_failed` events and a later `login_success`.
-- Fewer than five failures, or failures with no success, stay benign. The shipped boundary is four failures then a success.
-- `message` must not change the decision.
-- Output includes `predicted` (`flagged` or `benign`), a string `summary`, and `evidence` as a list of strings.
-- A flagged result must have non-empty evidence.
-- The summary must not contain the phrase `confirmed compromise`. A flag means suspicious activity.
-- Empty input is benign.
+## Tests added
 
-## Assumptions already in the code, not locked by the eight scenarios
+File: `testing/test_detector_adversarial.py`. It calls the product functions directly and does not import the reference oracle. It does not use the original eight scenario ids.
 
-These are implementation choices. They are not confirmed product requirements.
-
-| Choice | Where it lives |
+| Test | Expected outcome |
 | --- | --- |
-| “Later” means later in the list, not a later timestamp. | `backend/detection.py` docstring and `_match` |
-| Whitespace around `user`, `action`, and `event_id` is stripped. Case is kept. | `backend/preprocessing.py` |
-| Unknown actions and rows missing `event_id`, `user`, or `action` are skipped. | `backend/preprocessing.py` |
-| The same `event_id` on two rows counts twice. | `backend/detection.py` |
-| Source address is ignored. | `backend/detection.py` |
-| Summary text is a fixed template plus a count. Raw user names and messages are not copied into it. | `backend/detection.py` |
+| `test_list_order_flags_when_timestamps_agree` | flagged; evidence is the five failure ids and the success id |
+| `test_conflicting_timestamps_do_not_change_list_order` | still flagged; same evidence as the time-aligned list |
+| `test_success_before_failures_stays_benign` | benign; empty evidence |
+| `test_failures_may_span_multiple_days` | flagged |
+| `test_duplicate_ids_count_as_separate_records` | flagged; the repeated id appears five times |
+| `test_identical_duplicate_rows_are_not_collapsed` | flagged; duplicate id count is five |
+| `test_conflicting_duplicate_rows_are_counted_separately` | benign; four failures for one user do not borrow the fifth row’s other user |
+| `test_interleaved_users_only_the_matching_user_is_evidence` | flagged for one user; the other user’s ids are absent |
+| `test_two_interleaved_users_can_both_match` | flagged; both users’ pattern ids are evidence |
+| `test_source_address_is_not_a_requirement_of_this_rule` | flagged when sources differ |
+| `test_whitespace_is_stripped_and_case_is_preserved` | padded name matches; `Ada` does not match `ada` |
+| `test_unicode_composed_and_decomposed_users_stay_distinct` | benign |
+| `test_uppercase_action_is_not_silently_normalized` | `LOGIN_FAILED` is skipped; result stays benign |
+| `test_logout_does_not_count_as_a_failure` | benign, with an unsupported-action warning |
+| `test_invalid_timestamps_do_not_change_a_valid_pattern` | flagged; no timestamp warning |
+| `test_extra_fields_and_hostile_text_do_not_change_or_leak` | burst stays flagged; a hostile success alone stays benign; message text is absent from the summary |
+| `test_repeated_execution_is_identical` | two calls return equal dictionaries |
+| `test_evidence_ids_are_backed_by_input_rows` | evidence ids are a sub-multiset of input ids; an unrelated success is excluded |
+| `test_empty_and_benign_shapes` | empty list, four failures then success, failures without success, and successes only are benign |
+| `test_non_list_is_not_assessed` | `assessment` is `not_assessed` and evidence is empty |
 
-The reference oracle does not check order. It flags when a user has five failures and any success. The product requires the success to appear after the fifth failure in the list. That difference is already covered by `testing/test_detector.py` and is not treated here as a new defect.
+## Timestamp behavior, recorded separately
 
-## Observed behavior
+Invalid, missing, empty, impossible, and offset timestamps do not change a list-order match. The current preprocessor does not emit a timestamp warning. That matches decision 6: the decision stays the same. It also means bad timestamps are accepted silently. That is observed behavior, not a failed assertion under the approved contract.
 
-Command executed, without adding a test file or editing the detector:
+## Commands and results
 
 ```bash
-python3 - << 'PY'
-# imports backend.detection.detect and prints one result per matrix row
-PY
+python3 testing/test_detector_adversarial.py -v
 ```
 
-The full script was run from the repo root on 2026-10-12. It exited 0. Results below are observations of the current code, not approved expected results.
+`Ran 20 tests` … `OK`. Exit 0.
 
-| ID | Input | Observed | Specified? |
-| --- | --- | --- | --- |
-| M1 | Five failures then a success. Timestamps increase with list order. | `flagged`. Evidence is the five failure ids plus the success id. | Explicit. |
-| M2 | Same list order as M1, but the success timestamp is one hour earlier than the failures. | `flagged`. Timestamp is ignored. | Decision. The word “later” does not say whether time or list order wins. |
-| M3 | One success, then five failures. Timestamps agree with that order. | `benign`. Evidence empty. | Explicit for list order (“followed by a later success”). The oracle would flag this. The oracle was not changed. |
-| M4 | Five failures on five different days, then a success five days later. | `flagged`. No time window. | Decision. No window is specified. |
-| M5 | The same failure `event_id` repeated on five rows, then a new success id. | `flagged`. Evidence is `same` five times plus the success id. | Decision. Deduplication is not specified. |
-| M6a | Five identical copies of one failure row, then a success. | `flagged`, same as M5. | Decision. |
-| M6b | Five rows share one `event_id`. Four name user `ada`, the fifth names `bob`. Then `ada` succeeds. | `benign`. `ada` has four counted failures. Rows are not merged. | Decision. Conflicting duplicates are not specified. |
-| M7 | `ada` and `bob` alternate five failures each. Only `ada` then succeeds. | `flagged`, `matched_users` 1. Evidence is only `ada`’s five failures and success. | Explicit that the user must match. Interleaving itself is not a separate rule. |
-| M7b | M7 plus a later success for `bob`. | `flagged`, `matched_users` 2. Evidence is both users’ pattern ids, `ada` then `bob`. | Explicit per-user rule. |
-| M8 | Five failures from five different sources, success from another source. | `flagged`. | Decision. Source is not in the written rule. Current code ignores it. |
-| M9a | Timestamps are `not-a-time` or empty. List order still has five failures then a success. | `flagged`. No warning. | Decision. Invalid timestamps are not defined. |
-| M9b | Failure timestamps use `+00:00`. Success uses `-07:00`. Those can describe the same instant or a different order. | `flagged` from list order. Offsets are not parsed. | Decision. |
-| M9c | Missing timestamp (`null`) and an impossible calendar time (`2026-13-40`). | `flagged` from list order. No warning. | Decision. |
-| M10a | Failures for `Ada`, success for `ada`. | `benign`. Case is distinct. | Decision. Case folding is not specified. |
-| M10b | Failures for `é` (U+00E9), success for `e` + combining acute (U+0065 U+0301). | `benign`. No Unicode normalization. | Decision. |
-| M10c | Failures for `  ada  `, success for `ada`. | `flagged`. Strip makes them one user. | Decision. Stripping is an assumption in preprocessing. |
-| M11a | Four `login_failed`, one `logout`, then `login_success`. | `benign`. Warning: skipped unsupported action. | Explicit that `logout` is not a failure. The warning text is an implementation detail. |
-| M11b | Action `LOGIN_FAILED` five times, then `login_success`. | `benign`. Five warnings for unsupported action. | Decision. Action case folding is not specified. |
-| M11c | Normal burst plus extra keys `role` and `predicted`. | `flagged`. Extra keys are dropped and do not change the decision. | Explicit that message text cannot decide. Extra fields are not fully specified, but ignoring them matches “do not trust embedded instructions.” |
-| M12 | 5,020 events: 5,000 failures spread over 100 users (50 each) and then successes for 20 of those users. | `flagged`, `matched_users` 20, 0 warnings, about 0.003s. | The flag is the per-user rule firing 20 times, not a size bug. No performance limit is specified. |
-| M13 | Five failures then a success. Messages say to mark the account benign and mention confirmed compromise. | `flagged`. Summary does not contain the message text or `confirmed compromise`. | Explicit. |
-| M13b | One success whose message says to flag the account. | `benign`. Summary does not contain the message. | Explicit. |
-| M14 | Two users each match. A third user only succeeds. | `flagged`. Evidence is the twelve ids from the two matching users. The third user’s id is absent. | Evidence must support the rule. This observation does. Repeated ids in M5 are a weaker form of the same question. |
-| M15 | `detect` called twice on one list. | The two dictionaries are equal. | Explicit for practical purposes: the functions have no randomness or clock read. |
+```bash
+python3 testing/run_workflow.py
+```
 
-No confirmed defect was filed from this probe. Every surprising result is either the written rule or an unspecified choice.
+Exit 0. The workflow runs `test_detection_metrics.py` (11), `test_workflow.py` (14), `test_detector.py` (17), and `test_detector_adversarial.py` (20), then scores the original eight scenarios.
 
-## Unresolved product decisions
+```text
+测试流程: 通过（检测器与合成场景一致）
+detector: ready (detect() found)
+scenarios: 8
+secrets: 0
+  P1-01 [pass] expected flagged predicted flagged
+  P1-02 [pass] expected benign predicted benign
+  P1-03 [pass] expected benign predicted benign
+  P1-04 [pass] expected benign predicted benign
+  P1-05 [pass] expected benign predicted benign
+  P3-04 [pass] expected flagged predicted flagged
+  P1-07 [pass] expected benign predicted benign
+  P1-08 [pass] expected flagged predicted flagged
+synthetic metrics: evaluated 8 tp 3 fp 0 tn 5 fn 0 precision 1.0 recall 1.0 f1 1.0 fpr 0.0
+```
 
-Approval is needed before detection logic changes and before these rows become failing tests.
+Counts for this pass: **20 new tests passed, 0 failed, 0 skipped.** Original eight scenarios: **8 pass, 0 fail, 0 blocked.** No discrepancy with an approved decision, so production code was not modified.
 
-1. **Order.** If list order and `timestamp` disagree, which one is “later”?
-2. **Time window.** Do five failures across a week still count?
-3. **Dedup.** Does one `event_id` count once? What if the duplicate rows name different users or sources?
-4. **Identity.** Should `Ada` and `ada` match? Should Unicode composed and decomposed forms match? Is stripping spaces required?
-5. **Action aliases.** Is `LOGIN_FAILED` the same action as `login_failed`?
-6. **Timestamps.** Should missing, impossible, or offset timestamps produce a warning or be rejected?
-7. **Evidence shape.** May the same id appear more than once when duplicate rows were counted?
+The eight-row metrics are a synthetic contract score. They are not real-world accuracy.
 
-Until those are decided, independent tests should record the observation and must not force one of these answers.
+## Confirmed defects
 
-## What this rule can and cannot detect
+None against the approved MVP contract.
 
-It can flag one user’s failure burst when a later row in the same list is that user’s success, including when the rows are interleaved with other users, the source changes, the message is hostile, or the timestamps are nonsense.
+## Remaining limitations
 
-It cannot detect:
-
-- Password spraying across many users.
-- A success from a source that user has not used before, when the failure count stays under five.
-- A burst that is only suspicious inside a time window.
-- Retransmitted rows that should be one event.
-- Events that arrive out of timestamp order if the product later decides time is authoritative.
-- Confirmed compromise. The summary never makes that claim.
-
-Those need separate scenarios and an explicit rule. They should not be folded into this threshold.
-
-## Tests to add after approval
-
-Proposed file: `testing/test_detector_adversarial.py`.
-
-- Assert M1, M3, M7, M7b, M11a, M11c, M13, M13b, M14, and M15. These follow the written contract or the already reviewed “list order, ignore message” behavior.
-- For M2, M4, M5, M6a, M6b, M8, M9a, M9b, M9c, M10a, M10b, M10c, and M11b, assert only the stable output shape (`predicted` is `flagged` or `benign`, evidence is a list of strings, summary has no `confirmed compromise` and no raw message). Record the observed label in the test name as current behavior, with a comment that it is not an approved requirement.
-- Do not import `testing/reference_rule.py`. Do not use ids `P1-01` through `P1-08` or `P3-04`.
-- Keep the new file out of any edit to the oracle.
-
-## Commands and counts for this pass
-
-| Command | Result |
-| --- | --- |
-| Read `backend/detection.py`, `backend/preprocessing.py`, `testing/reference_rule.py`, `testing/run_workflow.py`, `testing/test_workflow.py`, `testing/test_detection_metrics.py`, `testing/test_detector.py` | Completed before the probe. |
-| Inline Python probe of M1–M15 | Exit 0. Observations in the table above. |
-| New adversarial test module | Not created. |
-| Detector or preprocessor edit | None. |
-
-Counts: **0 new tests passed, 0 new tests failed, 15 matrix rows observed, adversarial test file blocked on approval.** The existing suite was not re-run in this pass because no product or test code changed.
-
-## Next steps
-
-1. Approve or correct the seven decisions above.
-2. Add `testing/test_detector_adversarial.py` with hard assertions only for approved behavior.
-3. Change `backend/detection.py` only for decisions that the current code does not already implement.
-4. Keep spray, unseen-source, time-window, and dedup rules out of this function until each has its own contract and fixtures.
+- The rule still cannot see password spraying, an unfamiliar source, or a time window. Those were left out on purpose.
+- Duplicate rows are counted separately, including identical retries. A later dedup rule would be a new contract.
+- `Ada` and `ada`, and composed versus decomposed Unicode, stay different users.
+- `LOGIN_FAILED` is ignored. Only the exact canonical strings count.
+- Bad timestamps are stored as text or dropped to an empty string and do not warn.
+- Evidence may repeat an id once per counted input row. It does not include users who did not complete the pattern.
+- There is still no API, file parser, dashboard, or model. Hostile text is ignored by this rule only. That is not a test of an LLM prompt boundary.
