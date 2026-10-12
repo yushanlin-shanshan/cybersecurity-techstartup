@@ -1,6 +1,6 @@
 # Test plan
 
-Status: **blocked on product code**, except for the detection-metric calculator in `testing/`.
+Status: the workflow command runs today. Product scenarios stay blocked until `backend/detection.py` defines `detect()`. See `docs/testing/WORKFLOW.md`.
 
 Inspection date: 2026-10-12. Repository: `yushanlin-shanshan/cybersecurity-techstartup`. Commit inspected: `03c2599`.
 

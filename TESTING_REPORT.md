@@ -6,31 +6,34 @@ Report date: 2026-10-12. Repository: [yushanlin-shanshan/cybersecurity-techstart
 
 ## Short version
 
-The repository does not contain an application. There is nothing to ingest telemetry, flag suspicious logins, explain an alert, or show a dashboard. Detection accuracy is **not** established. One new tool was added and tested: a metric calculator that refuses to invent scores when no labeled file is provided. Its 11 unit tests passed.
+The product detector is still empty. `backend/detection.py` and `backend/preprocessing.py` were added on `main` as 0-byte placeholders (`757958f`). There is still no API, dashboard, or explanation model.
 
-Judges should not be told that this project has measured precision, recall, or F1 for a detector.
+The testing workflow runs anyway:
+
+```bash
+python3 testing/run_workflow.py
+```
+
+Latest observed result: exit 0, headline `测试流程: 通过（检测器还没实现，场景已装载但未计分）`. Eight synthetic scenarios are loaded and marked blocked. No product precision, recall, or F1 was computed.
+
+A reference rule inside the test suite scores those same eight scenarios at F1 1.0. That number checks the harness. It is not the product.
 
 ## Architecture as it exists
 
 | Component | State |
 | --- | --- |
-| Frontend (Next.js, React, dashboard) | Not in the repo |
-| Backend (FastAPI or any other API) | Not in the repo |
-| Telemetry ingestion | Not in the repo |
-| Detection rules or model | Not in the repo |
-| LLM explanations | Not in the repo |
-| Database | Not in the repo |
-| Datasets and ground-truth labels | None |
-| Tests that shipped with the repo | None |
-| Package manager / lockfile | None. No `package.json`, `pyproject.toml`, or `requirements.txt` |
-| Environment variables | None documented, none committed |
-| Local run command | None |
+| Frontend | Absent. No `package.json`. |
+| API server | Absent. |
+| `backend/preprocessing.py` | Present, 0 bytes. |
+| `backend/detection.py` | Present, 0 bytes. The workflow looks here for `detect()`. |
+| LLM explanations | Absent. |
+| Database | Absent. |
+| Synthetic scenario contract | `testing/scenarios/auth_scenarios.json`, 8 cases. |
+| Product ground-truth telemetry | None. |
+| Testing entry point | `python3 testing/run_workflow.py` |
+| CI | `.github/workflows/test.yml` runs that command. |
 
-`README.md` on `main` is only `# cybersecurity-techstartup`.
-
-Python 3.12.3 and Node v22.14.0 are installed on the inspection machine. The repository does not use them yet.
-
-The brief’s technology list is a proposal. It was not used as a reason to add a framework.
+Python 3.12.3 is enough. The workflow uses the standard library only.
 
 ## What was inspected
 
@@ -70,19 +73,50 @@ None on `03c2599`.
 
 ## Commands and results
 
-### Executed and passed
+### Workflow command
 
 ```bash
-python3 testing/test_detection_metrics.py -v
+python3 testing/run_workflow.py
 ```
 
-`Ran 11 tests`, `OK`, exit 0. The same result was observed on a second run.
+Observed exit 0:
+
+```text
+测试流程: 通过（检测器还没实现，场景已装载但未计分）
+exit: 0
+detector: not_implemented (backend/detection.py is empty)
+scenarios: 8
+secrets: 0
+claim: Detector is not implemented, so no detection metrics were computed.
+  P1-01 [blocked] expected flagged
+  P1-02 [blocked] expected benign
+  P1-03 [blocked] expected benign
+  P1-04 [blocked] expected benign
+  P1-05 [blocked] expected benign
+  P3-04 [blocked] expected flagged
+  P1-07 [blocked] expected benign
+  P1-08 [blocked] expected flagged
+report: testing/output/workflow_report.json
+```
+
+### Unit tests executed by that command
+
+```bash
+python3 testing/test_detection_metrics.py
+python3 testing/test_workflow.py
+```
+
+`test_detection_metrics.py`: 11 tests, `OK`, exit 0.
+
+`test_workflow.py`: 14 tests, `OK`, exit 0.
+
+The workflow tests include a plug-in check: pointing the loader at `testing/reference_rule.py` scores the 8 synthetic scenarios as TP 3, FP 0, TN 5, FN 0, precision 1, recall 1, F1 1, false-positive rate 0. Class balance: 3 flagged labels, 5 benign labels. **Synthetic harness check only.**
 
 ```bash
 python3 testing/detection_metrics.py --self-check
 ```
 
-Exit 0. Synthetic four-row fixture: TP 1, FP 1, TN 1, FN 1, precision 0.5, recall 0.5, F1 0.5, false-positive rate 0.5. Class balance: 2 positive labels, 2 negative labels. **This is not application performance.**
+Exit 0. Separate four-row calculator fixture: TP 1, FP 1, TN 1, FN 1, precision 0.5, recall 0.5, F1 0.5, false-positive rate 0.5. **This is not application performance.**
 
 ### Executed and blocked
 
@@ -104,17 +138,18 @@ Exit 2. Message: labeled CSV not provided, metrics not computed. This is the cor
 
 ESLint, `tsc --noEmit` against a project, `npm audit`, `pip-audit`, Semgrep, and Playwright were not run. There is no JS project, no Python dependency list, and no UI. A clean scan was not invented.
 
-Counts: **11 passed, 0 failed, 0 skipped, product suites blocked.** Detail is in `docs/testing/TEST_RESULTS.md`.
+Counts for the latest workflow run: **25 unit tests passed, 0 failed, 0 skipped, 8 product scenarios blocked.** Detail is in `docs/testing/TEST_RESULTS.md`.
 
 ## Detection metrics
 
 | Question | Answer |
 | --- | --- |
-| Events evaluated by a detector | 0 |
-| Ground-truth labels in the repo | 0 |
-| Held-out test set | None |
+| Product detector decisions scored | 0 (module empty, scenarios blocked) |
+| Synthetic contract scenarios loaded | 8 |
+| Reference-rule score on that contract | F1 1.0, harness only |
+| Real telemetry labels | None |
+| Held-out product test set | None |
 | Train/test leakage | Not applicable; nothing is trained |
-| Baseline comparison | None |
 | Precision, recall, F1 of the product | Not measured |
 
 Per-category product metrics were not produced. The calculator can split by a `category` column later. That feature was unit-tested with in-memory rows, not with security telemetry.
@@ -137,11 +172,10 @@ Missing authentication is not filed as a vulnerability of a server that does not
 
 ## Highest-priority work before a live demo
 
-1. Add the smallest runnable slice: load a synthetic auth log, apply one documented rule (failed logins followed by a success is the clearest first rule), print the evidence.
-2. Add two fixtures and automated assertions: one that must flag, one that must not. Keep the “not confirmed compromise” wording in the assertion.
-3. Add a malformed-input case that returns a controlled error.
-4. Only then attach an explanation model, behind a fallback when the provider errors, and with a test that a hostile log line cannot change the rule decision.
-5. Score `testing/detection_metrics.py` on a held-out CSV and paste the output into this report. Until that paste exists, do not quote precision or recall on a slide.
+1. Implement `detect()` in `backend/detection.py` so `python3 testing/run_workflow.py` changes the eight blocked rows into passes. The contract is in `docs/testing/WORKFLOW.md`.
+2. Keep summaries free of the phrase “confirmed compromise”.
+3. Only then attach an explanation model, with a fallback when the provider errors. Scenario `P3-04` already requires the decision to ignore hostile log text.
+4. Do not quote the reference-rule F1 of 1.0 as product accuracy.
 
 ## What remains untested
 
@@ -155,5 +189,12 @@ Everything in the product brief except the metric arithmetic: ingestion edge cas
 - `docs/testing/BUG_REGISTER.md`
 - `docs/testing/DETECTION_EVALUATION.md`
 - `docs/testing/TEST_RESULTS.md`
+- `docs/testing/WORKFLOW.md`
+- `testing/run_workflow.py`
+- `testing/workflow_lib.py`
+- `testing/reference_rule.py`
+- `testing/scenarios/auth_scenarios.json`
 - `testing/detection_metrics.py`
 - `testing/test_detection_metrics.py`
+- `testing/test_workflow.py`
+- `.github/workflows/test.yml`

@@ -1,6 +1,6 @@
 # Bug and vulnerability register
 
-Inspection date: 2026-10-12. Commit inspected: `03c2599` on `main`.
+Inspection date: 2026-10-12. Updated after `main` commit `757958f` added empty placeholders.
 
 Severity is about the hackathon demo and the safety of the software that exists, not about a production SOC deployment.
 
@@ -17,31 +17,26 @@ Severity is about the hackathon demo and the safety of the software that exists,
 
 **Evidence**
 
-- `git ls-tree -r HEAD` at `03c2599` lists only `README.md`.
-- `README.md` is the single line `# cybersecurity-techstartup`.
-- No `package.json`, `pyproject.toml`, `requirements.txt`, Python application modules, TypeScript, CSV, or JSON telemetry.
-- GitHub issues and pull requests: none. Only branch: `main`.
-- `npm test` exits because `package.json` is missing (exit 254).
-- `python3 -m pytest -q` exits 1 with `No module named pytest`. There is also no test suite for `pytest` to collect.
+- At `03c2599` the tree was only `README.md`.
+- At `757958f` the detection owner added `backend/detection.py` and `backend/preprocessing.py`. Both files are 0 bytes. `notebooks/` was added with no notebook.
+- `python3 testing/run_workflow.py` exits 0 and reports `detector: not_implemented (backend/detection.py is empty)`. All 8 scenarios are `blocked`. Metrics are null.
+- No `package.json`, API module, or dashboard exists.
 
 **Impact**
 
-There is no ingestion, detector, API, dashboard, or explanation path to demonstrate. Detection precision, recall, and F1 cannot be measured.
+The testing workflow can run, but the demo still cannot show a product decision, an API, or a dashboard. Product precision, recall, and F1 remain unmeasured.
+
+**Remediation**
+
+Implement `detect()` in `backend/detection.py` using the contract in `docs/testing/WORKFLOW.md`. Re-run `python3 testing/run_workflow.py`. A correct function turns the blocked rows into passes.
 
 **Safe reproduction**
 
 ```bash
-git clone https://github.com/yushanlin-shanshan/cybersecurity-techstartup
-cd cybersecurity-techstartup
-git checkout 03c2599
-git ls-tree -r HEAD
+python3 testing/run_workflow.py
 ```
 
-**Remediation**
-
-Land a small vertical slice before more test authoring: one synthetic auth-event format, one deterministic rule, one way to run it locally, and one fixture each for “should flag” and “should not flag”. Then automate P0 and P1 in `docs/testing/TEST_PLAN.md`.
-
-This register does not prescribe Next.js or FastAPI. Those were proposals in the brief, not dependencies of this repository.
+Exit 0 and `backend/detection.py is empty` reproduce the current gap. The testing workflow is healthy; the product function is absent.
 
 ### OBS-001 — No credentials in the tracked tree
 
@@ -62,11 +57,11 @@ These are risks to test when the matching code appears. They are not findings.
 | --- | --- | --- |
 | RISK-01 | Upload endpoint without a size limit | No endpoint. |
 | RISK-02 | CSV formula injection on export | No export. |
-| RISK-03 | Prompt injection via log text | No LLM client. |
+| RISK-03 | Prompt injection via an LLM explanation | No LLM client. Scenario P3-04 already locks the rule decision against hostile log text, and the reference rule keeps it flagged. The product function has not run. |
 | RISK-04 | Model-written HTML or explanations treated as evidence | No explanation path. |
 | RISK-05 | Dependency CVEs | No dependency manifest. |
 | RISK-06 | Missing authentication | No server and no claim of multi-user access. Revisit if the demo is exposed beyond localhost. |
 
 ## Product defects found by tests
 
-None. The only executed tests are the metric-calculator tests in `testing/test_detection_metrics.py`. They passed. They do not exercise a detector.
+None in the product. `backend/detection.py` is empty, so the workflow does not call it. The 25 unit tests passed. They exercise the harness and a reference rule, not the product detector.
