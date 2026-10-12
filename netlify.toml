@@ -1,5 +1,4 @@
-# Netlify publishes the repository root by default. The site is the
-# static SignalDesk app already built in frontend_duoyao/dist.
-# The Python API in blue-team-backend is not part of this publish.
+# Netlify publishes the static sigsig app. It does not run serve.py or
+# the Python API. app-config.json points at a snapshot of the demo queue.
 [build]
   publish = "frontend_duoyao/dist"
