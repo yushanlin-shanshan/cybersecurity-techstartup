@@ -81,6 +81,13 @@ async function start(){
   if(!response.ok)throw Error('Application configuration unavailable.');
   const config=await response.json();
   if(typeof config.job_id!=='string'||!config.job_id.trim())throw Error('No dataset configured.');
+  if(typeof config.results_url==='string'&&config.results_url.startsWith('/')&&!config.results_url.startsWith('//')){
+   const snapshot=await fetch(config.results_url,{cache:'no-store',signal:AbortSignal.timeout(60000)});
+   if(!snapshot.ok)throw Error('Published event snapshot unavailable.');
+   loadResults(await snapshot.json(),null);
+   for(const el of [$('#search'),$('#priority-filter'),$('#status-filter')])el.disabled=false;
+   return;
+  }
   const client=new BlueTeamBackend(location.origin,config.job_id);
   const results=await client.results((loaded,total)=>{$('#dataset-description').textContent=`Loading ${loaded.toLocaleString()} of ${total.toLocaleString()} events…`;});
   loadResults(results,client);
