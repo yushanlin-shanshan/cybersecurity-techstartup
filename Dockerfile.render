@@ -1,0 +1,10 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY blue-team-backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY blue-team-backend/backend ./backend
+COPY blue-team-backend/demo ./demo
+COPY frontend_duoyao/dist ./frontend
+ENV DATA_DIR=/data MAX_UPLOAD_MB=4 MAX_EXPANDED_MB=64 MAX_ALERTS=100000
+EXPOSE 10000
+CMD ["sh", "-c", "python -m backend.cli demo && exec uvicorn backend.website:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]
